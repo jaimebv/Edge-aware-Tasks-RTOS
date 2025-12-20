@@ -256,13 +256,13 @@ static eaPort_task_state_t freertos_convert_task_state(eTaskState freertosState)
 
 
 
-void eaPort_Get_Task_Info (eaPort_task_info_t *taskInfo, eaPort_task_t *taskHandle)
+eaPort_status_t eaPort_Get_Task_Info (eaPort_task_info_t *taskInfo, eaPort_task_t *taskHandle)
 {
     
     if (taskInfo == NULL || taskHandle == NULL) {
         eaPort_task_info_t emptyInfo = {0};
         *taskInfo = emptyInfo;
-        return;
+        return eaPort_STATUS_ERROR;
     }
 
     TaskHandle_t handle = (TaskHandle_t)(*taskHandle);
@@ -293,6 +293,11 @@ void eaPort_Get_Task_Info (eaPort_task_info_t *taskInfo, eaPort_task_t *taskHand
         taskInfo->uxCurrentPriority = uxTaskPriorityGet(handle);
         taskInfo->uxStackHighWaterMark = uxTaskGetStackHighWaterMark(handle);
     #endif
+    if (taskInfo->pcTaskName == NULL) {
+        taskInfo->pcTaskName = "";
+        return eaPort_STATUS_ERROR;
+    }
+    return eaPort_STATUS_OK;
 }
 
 eaPort_task_t eaPort_Get_Current_Task_Handle()

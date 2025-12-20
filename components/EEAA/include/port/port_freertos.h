@@ -325,7 +325,7 @@ eaPort_tick_t eaPort_Get_Tick_Time(void);
  * @brief Retrieves detailed information about a specific task.
  * Populates the provided eaPort_task_info_t structure with data
  */
-void eaPort_Get_Task_Info (eaPort_task_info_t *taskInfo, eaPort_task_t *taskHandle);
+eaPort_status_t eaPort_Get_Task_Info (eaPort_task_info_t *taskInfo, eaPort_task_t *taskHandle);
 
 
 /**
