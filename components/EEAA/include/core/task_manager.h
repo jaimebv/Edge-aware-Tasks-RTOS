@@ -14,46 +14,77 @@ extern "C" {
 #endif
 
 
-
-//---------------------------------------------------------------------
+/**
+ * @brief Enumeration of edge task types.
+ * Used for categorizing tasks in the edge-aware RTOS.
+ * LOCAL: Task only runs locally.
+ * ENRICHED: Task with enhanced capabilities when runs at the edge, thus can be offloaded.
+ * REMOTE: Task designed to always run remotely (e.g., remote edge or in the cloud).
+ */
 typedef enum {
   LOCAL =       0,
-  ENHANCED =    1,
-  ACCELERATED = 2,
-  NATIVE =      3,
-  CLOUD =       4
+  ENRICHED =    1,
+  REMOTE =      2,
 } edge_task_type_t;
 
-//---------------------------------------------------------------------
+
+/**
+ * @brief Enumeration of edge task segments.
+ * Used for categorizing tasks based on their segment in the edge-aware RTOS.
+ * CLIENT_SEGMENT: Task belongs to the client segment.
+ * SERVER_SEGMENT: Task belongs to the server segment.
+ * UNIQUE_SEGMENT: Task is unique and does not belong to client or server segments.
+ */
 typedef enum {
   CLIENT_SEGMENT  =      0,
   SERVER_SEGMENT =       1,
   UNIQUE_SEGMENT =       2
 } edge_task_segment_t;
 
-//---------------------------------------------------------------------
+
+/**
+ * @brief Enumeration of edge task execution sites.
+ * Used to indicate where the task is currently executing.
+ * LOCAL_EXECUTION: Task is executing locally.
+ * REMOTE_EXECUTION: Task is executing remotely (e.g., on an edge server or
+ * cloud).
+ */
 typedef enum {
   LOCAL_EXECUTION  =       0,
   REMOTE_EXECUTION =       1
 } edge_task_execution_site_t;
 
-//---------------------------------------------------------------------
+
+/**
+ * @brief Enumeration of signals that can be sent to edge tasks.
+ * SIGNAL_WAIT: Task should wait.
+ * SIGNAL_SUSPEND: Task should suspend its execution.
+ * SIGNAL_SWITCH: Task should switch its execution site.
+ */
 typedef enum {
   SIGNAL_WAIT    =       0,
   SIGNAL_SUSPEND =       1,
   SIGNAL_SWITCH  =       2
 } edge_task_signal_t;
 
-//---------------------------------------------------------------------
+
+/**
+ * @brief Structure for sampling task monitoring data.
+ */
 typedef struct {
   uint32_t start_tick;
   uint32_t start_cycles;
 } edge_task_monitor_sample_t;
 
-//---------------------------------------------------------------------
+
+/**
+ * @brief Structure for monitoring edge task metrics.
+ * Includes various performance and execution metrics.
+ * Used for performance monitoring and decision-making.
+ */
 typedef struct {
   char name[CONFIG_EA_MAX_TASK_NAME_LEN];       // Task name
-  uint32_t runTime;                             // Total run-time in microseconds (from vTaskGetRunTimeStats)
+  uint32_t runTime;                             // Total run-time in microseconds
   float cpuUsagePercent;                        // CPU usage in percentage (calculated from runTime vs total run time)
   char state;                                   // Task state (e.g., 'R', 'B', etc.)
   unsigned priority;                            // Task priority
@@ -84,10 +115,12 @@ typedef struct {
 } edge_task_monitor_t;
 
 
-//---------------------------------------------------------------------
-// Structure used to pass communication queues to an edge task.
-// The client uses queue_client_server to send to the server, and the server uses
-// queue_server_client to reply to the client.
+/**
+ * @brief 
+ * Structure used to pass communication queues to an edge task.
+ *  The client uses queue_client_server to send to the server, and the server uses
+ * queue_server_client to reply to the client.
+ */
 typedef struct {
   eaPort_queue_t queue_client_server;           // Client-to-server queue
   eaPort_queue_t queue_server_client;           // Server-to-client queue
@@ -95,13 +128,20 @@ typedef struct {
   eaPort_task_t  HandlerServer;                 // Server task handle
   eaPort_task_t  HandlerClient;                 // Client task handle
 } edge_task_params_t;
-//---------------------------------------------------------------------
+
+
+/*===========================================================================*/
+/* EXTERNAL VARIABLES                                                        */
+/*===========================================================================*/
 
 extern edge_task_monitor_t monitoredTasks[CONFIG_EA_MAX_TASKS];
 extern size_t numMonitoredTasks;
 extern eaPort_mutex_t monitoredTasksMux;
 
-//---------------------------------------------------------------------
+
+/*===========================================================================*/
+/* GET METHODS                                                         */
+/*===========================================================================*/
 
 size_t get_num_monitored_tasks(void);
 
@@ -114,7 +154,23 @@ int get_task_signal(int taskIndex);
 
 const char* get_task_ex_site(const char *taskName);
 
+eaPort_task_t get_task_handler(const char *taskName);
 
+uint32_t get_task_cpu_cycles(int taskIndex);
+
+
+uint32_t get_task_data_size(int taskIndex);
+
+
+unsigned get_task_OE2EL(int taskIndex);
+
+
+unsigned get_task_WCET(int taskIndex);
+
+
+/*===========================================================================*/
+/* TASK MANAGEMENT METHODS                                                   */
+/*===========================================================================*/
 edge_task_monitor_sample_t start_task_monitoring(void);
 
 
@@ -142,7 +198,7 @@ void update_task_metrics(
     uint32_t newDataSize);
 
 
-void update_task_metrics_index(
+void update_task_metrics_by_index(
     int taskIndex, 
     uint32_t newOE2EL, 
     uint32_t newCycles, 
@@ -157,25 +213,10 @@ void update_task_metrics_OE2EL(const char *taskName, uint32_t newOE2EL);
 int find_task_index(const char *taskName);
 
 
-eaPort_task_t get_task_handler(const char *taskName);
-
-
 void remove_monitored_task(const char *taskName);
 
 
 int is_client_task(const char* str);
-
-
-uint32_t get_task_cpu_cycles(int taskIndex);
-
-
-uint32_t get_task_data_size(int taskIndex);
-
-
-unsigned get_task_OE2EL(int taskIndex);
-
-
-unsigned get_task_WCET(int taskIndex);
 
 
 uint32_t tasks_compute_hyperperiod();
