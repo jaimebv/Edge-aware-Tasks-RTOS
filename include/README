@@ -1,0 +1,12 @@
+
+Here you will need to add the file secrets.h
+
+
+
+´´´
+// Replace these with your WiFi credentials
+#define EXAMPLE_ESP_WIFI_SSID      "<<SECRET>>"
+#define EXAMPLE_ESP_WIFI_PASS      "<<12345678>>"
+#define EXAMPLE_ESP_MAXIMUM_RETRY  5
+
+´´´

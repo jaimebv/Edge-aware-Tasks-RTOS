@@ -1,0 +1,5 @@
+.pio
+.vscode/*
+secrets.h
+include/templates.h
+src/test/test_task_manager.c

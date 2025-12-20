@@ -1,0 +1,4 @@
+version: "1.0.0"
+description: "Edge-aware Tasks RTOS - Platform Abstraction Layer"
+dependencies:
+  idf: ">=4.4.0"
