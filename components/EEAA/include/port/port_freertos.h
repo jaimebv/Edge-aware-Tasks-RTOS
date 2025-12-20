@@ -29,6 +29,7 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
+#include "freertos/queue.h"
 #include "port_interface_types.h"
 
 #ifdef __cplusplus
@@ -115,6 +116,49 @@ void eaPort_Mutex_Enter(eaPort_mutex_t mutex);
  * @see eaPort_Mutex_Enter
  */
 void eaPort_Mutex_Exit(eaPort_mutex_t mutex);
+
+
+/*===========================================================================*/
+/* QUEUE MANAGEMENT                                                          */
+/*===========================================================================*/
+
+/**
+ * @brief Creates a new queue.
+ * * @param queue_length The maximum number of items the queue can hold.
+ * @param item_size The size (in bytes) of each item in the queue.
+ * @return eaPort_queue_t Handle to the created queue, or NULL if failed.
+ */
+eaPort_queue_t eaPort_Queue_Create(uint32_t queue_length, uint32_t item_size);
+
+/**
+ * @brief Deletes a queue and frees memory.
+ * @param queue Handle of the queue to delete.
+ */
+void eaPort_Queue_Delete(eaPort_queue_t queue);
+
+/**
+ * @brief Sends an item to the queue (Copy by value).
+ * * @param queue The queue handle.
+ * @param item Pointer to the item to copy into the queue.
+ * @param wait_ms Time to wait in milliseconds if queue is full. 
+ * Use eaPort_WAIT_FOREVER or eaPort_NO_WAIT.
+ * @return eaPort_status_t eaPort_STATUS_OK on success, eaPort_STATUS_ERROR on timeout/fail.
+ */
+eaPort_status_t eaPort_Queue_Send(eaPort_queue_t queue, const void *item, uint32_t wait_ms);
+
+/**
+ * @brief Receives an item from the queue.
+ * * @param queue The queue handle.
+ * @param buffer Pointer to memory where the item will be copied.
+ * @param wait_ms Time to wait in milliseconds if queue is empty.
+ * @return eaPort_status_t eaPort_STATUS_OK on success, eaPort_STATUS_ERROR on timeout/fail.
+ */
+eaPort_status_t eaPort_Queue_Receive(eaPort_queue_t queue, void *buffer, uint32_t wait_ms);
+
+/**
+ * @brief Returns the number of items currently stored in the queue.
+ */
+uint32_t eaPort_Queue_Messages_Waiting(eaPort_queue_t queue);
 
 
 /*===========================================================================*/

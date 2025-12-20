@@ -86,6 +86,71 @@ void eaPort_Mutex_Exit(eaPort_mutex_t mutex)
 
 
 /*===========================================================================*/
+/* QUEUE MANAGEMENT IMPLEMENTATION                                           */
+/*===========================================================================*/
+
+eaPort_queue_t eaPort_Queue_Create(uint32_t queue_length, uint32_t item_size)
+{
+    /* Wrapper for xQueueCreate */
+    return (eaPort_queue_t)xQueueCreate((UBaseType_t)queue_length, (UBaseType_t)item_size);
+}
+
+
+void eaPort_Queue_Delete(eaPort_queue_t queue)
+{
+    if (queue != NULL) {
+        vQueueDelete((QueueHandle_t)queue);
+    }
+}
+
+
+eaPort_status_t eaPort_Queue_Send(eaPort_queue_t queue, const void *item, uint32_t wait_ms)
+{
+    if (queue == NULL || item == NULL) {
+        return eaPort_STATUS_ERROR;
+    }
+
+    TickType_t ticks;
+    if (wait_ms == eaPort_WAIT_FOREVER) {
+        ticks = portMAX_DELAY;
+    } else {
+        ticks = pdMS_TO_TICKS(wait_ms);
+    }
+
+    /* Wrapper for xQueueSend (pushes to back) */
+    BaseType_t result = xQueueSend((QueueHandle_t)queue, item, ticks);
+    
+    return (result == pdPASS) ? eaPort_STATUS_OK : eaPort_STATUS_ERROR;
+}
+
+
+eaPort_status_t eaPort_Queue_Receive(eaPort_queue_t queue, void *buffer, uint32_t wait_ms)
+{
+    if (queue == NULL || buffer == NULL) {
+        return eaPort_STATUS_ERROR;
+    }
+
+    TickType_t ticks;
+    if (wait_ms == eaPort_WAIT_FOREVER) {
+        ticks = portMAX_DELAY;
+    } else {
+        ticks = pdMS_TO_TICKS(wait_ms);
+    }
+
+    BaseType_t result = xQueueReceive((QueueHandle_t)queue, buffer, ticks);
+
+    return (result == pdPASS) ? eaPort_STATUS_OK : eaPort_STATUS_ERROR;
+}
+
+
+uint32_t eaPort_Queue_Messages_Waiting(eaPort_queue_t queue)
+{
+    if (queue == NULL) return 0;
+    return (uint32_t)uxQueueMessagesWaiting((QueueHandle_t)queue);
+}
+
+
+/*===========================================================================*/
 /* TASK LIFECYCLE MANAGEMENT                                                 */
 /*===========================================================================*/
 

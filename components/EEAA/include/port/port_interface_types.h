@@ -112,6 +112,21 @@ typedef int32_t eaPort_status_t;
  */
 #define eaPort_MUTEX_INIT NULL
 
+/*===========================================================================*/
+/* QUEUE DEFINITIONS                                                         */
+/*===========================================================================*/
+
+/**
+ * @brief Abstract handle for a Message Queue.
+ */
+typedef void* eaPort_queue_t;
+
+/**
+ * @brief Timeout constants for Queue operations
+ */
+#define eaPort_WAIT_FOREVER     0xFFFFFFFF  /**< Block indefinitely until success */
+#define eaPort_NO_WAIT          0           /**< Do not block, return immediately */
+
 
 /*===========================================================================*/
 /* PLATFORM-SPECIFIC DEFINITIONS                                            */
