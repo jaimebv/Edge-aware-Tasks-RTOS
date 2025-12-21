@@ -82,37 +82,82 @@ typedef struct {
  * Includes various performance and execution metrics.
  * Used for performance monitoring and decision-making.
  */
+// typedef struct {
+//   char name[CONFIG_EA_MAX_TASK_NAME_LEN];       // Task name
+//   //uint32_t runTime;                             // Total run-time in microseconds
+//   //float cpuUsagePercent;                        // CPU usage in percentage (calculated from runTime vs total run time)
+//   //char state;                                   // Task state (e.g., 'R', 'B', etc.)
+//   uint8_t priority;                            // Task priority
+//   //unsigned stackHighWaterMark;                  // Minimum amount of stack (in words) that has remained for the task (or current usage)
+//   edge_task_type_t app_type;                    // type of application
+//   edge_task_segment_t app_segment;              // The segment of the application (client or server)
+
+//   uint32_t last_start;                          // Last time the task started in ticks
+//   uint32_t last_end;                            // Last time the task ended in ticks
+//   unsigned MAE2EL;                              // Deadline Max Accepted E2E Latency
+//   unsigned OE2EL;                               // Latest Observed E2E Latency
+//   unsigned latest_local;                        // Latest Observed E2E Latency when task was local
+//   unsigned WCET;                                // WCET registered for the task after profiling
+//   edge_task_execution_site_t ex_site;           // The current execution site of the task
+//   uint8_t core;                                 // Core index where the task executes
+//   uint32_t cpu_cycles;                          // Number of Cpu cycles the task took to execute (do not disseminate preemtion time or interrupts)
+//   uint32_t data_size;                           // The size of the data sent from client-server, server-client
+//   uint8_t delay_weight;                         // Weight for deadline importance (a in a+b=100)
+//   uint8_t energy_weight;                        // Weight for energy importance (b in a+b=100)
+//   eaPort_task_t TaskHandle;                     // The scheduler handle for the task
+//   char relation[CONFIG_EA_MAX_TASK_NAME_LEN];   // Related task name (e.g., client/server counterpart)
+//   eaPort_task_t RelationTaskHandle;             // The scheduler handle for the task
+//   char host[32];                                // Host associated with the task
+//   volatile edge_task_signal_t signal_request;   // Flag to send a signal to the task
+//   unsigned remote_time;                         // Latest Observed E2E Latency
+//   uint32_t periodTicks;                         // Task period in ticks
+//   uint32_t    lastWindowCycles;                 // Cpu cycles at the start of the last monitoring window
+//   float       lastWindowTimeMs;                 // Time in ms at the start of the last monitoring window
+// } edge_task_monitor_t;
+
 typedef struct {
-  char name[CONFIG_EA_MAX_TASK_NAME_LEN];       // Task name
-  uint32_t runTime;                             // Total run-time in microseconds
-  float cpuUsagePercent;                        // CPU usage in percentage (calculated from runTime vs total run time)
-  char state;                                   // Task state (e.g., 'R', 'B', etc.)
-  unsigned priority;                            // Task priority
-  unsigned stackHighWaterMark;                  // Minimum amount of stack (in words) that has remained for the task (or current usage)
-  edge_task_type_t app_type;                    // type of application
-  edge_task_segment_t app_segment;              // The segment of the application (client or server)
-  unsigned MAE2EL;                              // Deadline Max Accepted E2E Latency
-  unsigned last_start;                          // Last time the task started in ticks
-  unsigned last_end;                            // Last time the task ended in ticks
-  unsigned OE2EL;                               // Latest Observed E2E Latency
-  unsigned latest_local;                        // Latest Observed E2E Latency when task was local
-  unsigned WCET;                                // WCET registered for the task after profiling
-  edge_task_execution_site_t ex_site;           // The current execution site of the task
-  uint8_t core;                                 // Core index where the task executes
-  uint32_t cpu_cycles;                          // Number of Cpu cycles the task took to execute (do not disseminate preemtion time or interrupts)
-  uint32_t data_size;                           // The size of the data sent from client-server, server-client
-  uint8_t delay_weight;                         // Weight for deadline importance (a in a+b=100)
-  uint8_t energy_weight;                        // Weight for energy importance (b in a+b=100)
-  eaPort_task_t TaskHandle;                     // The scheduler handle for the task
-  char relation[CONFIG_EA_MAX_TASK_NAME_LEN];   // Related task name (e.g., client/server counterpart)
-  eaPort_task_t RelationTaskHandle;             // The scheduler handle for the task
-  char host[32];                                // Host associated with the task
-  volatile edge_task_signal_t signal_request;   // Flag to send a signal to the task
-  unsigned remote_time;                         // Latest Observed E2E Latency
-  uint32_t periodTicks;                         // Task period in ticks
-  uint32_t    lastWindowCycles;                 // Cpu cycles at the start of the last monitoring window
-  float       lastWindowTimeMs;                 // Time in ms at the start of the last monitoring window
+    
+    eaPort_task_t   task_handler;
+    eaPort_task_t   relation_handler;
+    char            name[CONFIG_EA_MAX_TASK_NAME_LEN]; // Needed for unique IDs
+    const char*     host;          // Store pointer, not copy (Save ~28 bytes)
+    const char*     relation;      // Store pointer, not copy
+    
+    uint32_t        cpu_cycles;
+    uint32_t        data_size;
+    uint32_t        start_tick;
+    uint32_t        end_tick;
+    uint32_t        period;
+    unsigned        OE2EL;
+    unsigned        MAE2EL;
+    unsigned        WCET;
+
+    
+
+    volatile edge_task_signal_t signal_request;
+    edge_task_type_t           type;
+    edge_task_segment_t        segment;
+    edge_task_execution_site_t exec_site;
+    uint8_t                    delay_weight;
+    uint8_t                    energy_weight;
+    uint8_t                    core;
+    bool                       is_active;
+    
 } edge_task_monitor_t;
+
+
+/**
+ * @brief Structure for taking a snapshot of a task's state.
+ */
+typedef struct {
+    uint32_t      cpu_cycles;
+    uint32_t      period;
+    unsigned      WCET;
+    unsigned      OE2EL;
+    const char* host;
+    eaPort_task_t handle;
+    bool          valid; // Flag to tell caller if snapshot was successful
+} task_snapshot_t;
 
 
 /**
@@ -134,10 +179,55 @@ typedef struct {
 /* EXTERNAL VARIABLES                                                        */
 /*===========================================================================*/
 
-extern edge_task_monitor_t monitoredTasks[CONFIG_EA_MAX_TASKS];
-extern size_t numMonitoredTasks;
-extern eaPort_mutex_t monitoredTasksMux;
+//extern edge_task_monitor_t monitoredTasks[CONFIG_EA_MAX_TASKS];
+//extern size_t numMonitoredTasks;
+//extern eaPort_mutex_t monitoredTasksMux;
 
+
+/**
+ * @brief Initialize the task manager (create mutexes, clear arrays)
+ * Must be called before creating any tasks.
+ */
+void task_manager_init(void);
+
+
+int _CreateTaskPinnedToCore_(
+    eaPort_task_function_t pxTaskCode, 
+    const char *const pcName, 
+    const uint32_t usStackDepth, 
+    void *const pvParameters, 
+    uint8_t uxPriority, 
+    const uint8_t xCoreID, 
+    edge_task_type_t app_type, 
+    edge_task_segment_t app_segment, 
+    unsigned MAE2EL, 
+    uint8_t delay_weight, 
+    uint8_t energy_weight, 
+    const char *const pcHost, 
+    const char *const pcRelation, 
+    edge_task_execution_site_t pcExec,
+    uint32_t xPeriod,
+    unsigned WCET
+);
+
+
+int CreateEATaskPinnedToCore(
+    const char *const TaskName, 
+    uint8_t Priority, 
+    eaPort_task_function_t TaskCodeClient, 
+    eaPort_task_function_t TaskCodeServer, 
+    const uint32_t MemStackDepthClient, 
+    const uint32_t MemStackDepthServer, 
+    const uint8_t CoreID, 
+    edge_task_type_t AppType, 
+    unsigned MAE2EL, 
+    uint8_t DelaySensibility, 
+    uint8_t EnergySensibility, 
+    edge_task_execution_site_t DefaultExecutionSite, 
+    const char *const HostName, 
+    uint32_t xPeriod, 
+    unsigned WCET_c, 
+    unsigned WCET_s);
 
 /*===========================================================================*/
 /* GET METHODS                                                         */
@@ -146,7 +236,7 @@ extern eaPort_mutex_t monitoredTasksMux;
 size_t get_num_monitored_tasks(void);
 
 
-int get_task_Index(const char *taskName);
+int get_task_index(const char *taskName);
 
 
 int get_task_signal(int taskIndex);
@@ -222,44 +312,7 @@ int is_client_task(const char* str);
 uint32_t tasks_compute_hyperperiod();
 
 
-int CreateEdgeTaskPinnedToCore(
-  eaPort_task_function_t pxTaskCode, 
-  const char *const pcName, 
-  const uint32_t usStackDepth, 
-  void *const pvParameters, 
-  uint32_t uxPriority, 
-  const int32_t xCoreID, 
-  edge_task_type_t app_type, 
-  edge_task_segment_t app_segment, 
-  unsigned MAE2EL, 
-  uint8_t delay_weight, 
-  uint8_t energy_weight, 
-  const char *const pcHost, 
-  const char *const pcRelation, 
-  edge_task_execution_site_t pcExec,
-  uint32_t xPeriod,
-  unsigned WCET
-);
 
-
-int CreateEdgeTaskPinnedToCoreDynamic(
-  const char *const TaskName, 
-  uint32_t Priority, 
-  eaPort_task_function_t TaskCodeClient, 
-  eaPort_task_function_t TaskCodeServer, 
-  const uint32_t MemStackDepthClient, 
-  const uint32_t MemStackDepthServer, 
-  const int32_t CoreID, 
-  edge_task_type_t AppType, 
-  unsigned MAE2EL, 
-  uint8_t DelaySensibility, 
-  uint8_t EnergySensibility, 
-  edge_task_execution_site_t DefaultExecutionSite, 
-  const char *const HostName,
-  uint32_t xPeriod,
-  unsigned WCET_c, 
-  unsigned WCET_s
-);
 
 
 #ifdef __cplusplus

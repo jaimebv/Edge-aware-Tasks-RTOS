@@ -137,7 +137,7 @@ typedef void* eaPort_queue_t;
  * Used when creating tasks on systems without core affinity requirements.
  * Port implementations that don't support core affinity should ignore this.
  */
-#define eaPort_NO_AFFINITY (-1)
+#define eaPort_NO_AFFINITY (255)
 
 
 /**

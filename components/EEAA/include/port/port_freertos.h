@@ -322,6 +322,23 @@ eaPort_tick_t eaPort_Get_Tick_Time(void);
 
 
 /**
+ * @brief Delays the calling task for a specified number of milliseconds.
+ * Puts the task into the Blocked state for at least the specified duration.
+ */
+void eaPort_Delay_Milliseconds(uint32_t ms);
+
+
+/**
+ * @brief Delays a task until a specified time increment has elapsed.
+ * Puts the task into the Blocked state until the next wake time.
+ * @param[in,out] previousWakeTime Pointer to the last wake time (in ticks).
+ *                                 Updated to the new wake time.
+ * @param[in] timeIncrementMs Time increment in milliseconds to delay.
+ */
+void eaPort_Delay_Until(eaPort_tick_t *previousWakeTime, uint32_t timeIncrementMs);
+
+
+/**
  * @brief Retrieves detailed information about a specific task.
  * Populates the provided eaPort_task_info_t structure with data
  */

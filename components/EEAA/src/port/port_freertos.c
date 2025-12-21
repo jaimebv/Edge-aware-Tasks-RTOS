@@ -460,6 +460,16 @@ eaPort_tick_t eaPort_Get_Tick_Time(void)
     return (eaPort_tick_t)xTaskGetTickCount();
 }
 
+void eaPort_Delay_Milliseconds(uint32_t ms)
+{
+    vTaskDelay(pdMS_TO_TICKS(ms));
+}
+
+void eaPort_Delay_Until(eaPort_tick_t *previousWakeTime, uint32_t timeIncrementMs)
+{
+    vTaskDelayUntil((TickType_t *)previousWakeTime, pdMS_TO_TICKS(timeIncrementMs));
+}
+
 
 // void eaPort_Get_Task_Runtime_Stats(char *pcWriteBuffer)
 // {
