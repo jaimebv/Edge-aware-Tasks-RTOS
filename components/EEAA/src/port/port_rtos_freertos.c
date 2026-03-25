@@ -1,5 +1,5 @@
 /**
- * @file port_freertos.c
+ * @file port_rtos_freertos.c
  * @brief FreeRTOS Scheduler Abstraction Layer Implementation
  *
  * This module implements portable wrappers around FreeRTOS APIs.
@@ -18,7 +18,7 @@
  * @date 2025
  */
 
-#include "port/port_freertos.h"
+#include "port/port_rtos_freertos.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -82,6 +82,71 @@ void eaPort_Mutex_Exit(eaPort_mutex_t mutex)
     if (mutex != NULL) {
         xSemaphoreGive((SemaphoreHandle_t)mutex);
     }
+}
+
+
+/*===========================================================================*/
+/* QUEUE MANAGEMENT IMPLEMENTATION                                           */
+/*===========================================================================*/
+
+eaPort_queue_t eaPort_Queue_Create(uint32_t queue_length, uint32_t item_size)
+{
+    /* Wrapper for xQueueCreate */
+    return (eaPort_queue_t)xQueueCreate((UBaseType_t)queue_length, (UBaseType_t)item_size);
+}
+
+
+void eaPort_Queue_Delete(eaPort_queue_t queue)
+{
+    if (queue != NULL) {
+        vQueueDelete((QueueHandle_t)queue);
+    }
+}
+
+
+eaPort_status_t eaPort_Queue_Send(eaPort_queue_t queue, const void *item, uint32_t wait_ms)
+{
+    if (queue == NULL || item == NULL) {
+        return eaPort_STATUS_ERROR;
+    }
+
+    TickType_t ticks;
+    if (wait_ms == eaPort_WAIT_FOREVER) {
+        ticks = portMAX_DELAY;
+    } else {
+        ticks = pdMS_TO_TICKS(wait_ms);
+    }
+
+    /* Wrapper for xQueueSend (pushes to back) */
+    BaseType_t result = xQueueSend((QueueHandle_t)queue, item, ticks);
+    
+    return (result == pdPASS) ? eaPort_STATUS_OK : eaPort_STATUS_ERROR;
+}
+
+
+eaPort_status_t eaPort_Queue_Receive(eaPort_queue_t queue, void *buffer, uint32_t wait_ms)
+{
+    if (queue == NULL || buffer == NULL) {
+        return eaPort_STATUS_ERROR;
+    }
+
+    TickType_t ticks;
+    if (wait_ms == eaPort_WAIT_FOREVER) {
+        ticks = portMAX_DELAY;
+    } else {
+        ticks = pdMS_TO_TICKS(wait_ms);
+    }
+
+    BaseType_t result = xQueueReceive((QueueHandle_t)queue, buffer, ticks);
+
+    return (result == pdPASS) ? eaPort_STATUS_OK : eaPort_STATUS_ERROR;
+}
+
+
+uint32_t eaPort_Queue_Messages_Waiting(eaPort_queue_t queue)
+{
+    if (queue == NULL) return 0;
+    return (uint32_t)uxQueueMessagesWaiting((QueueHandle_t)queue);
 }
 
 
@@ -191,13 +256,13 @@ static eaPort_task_state_t freertos_convert_task_state(eTaskState freertosState)
 
 
 
-void eaPort_Get_Task_Info (eaPort_task_info_t *taskInfo, eaPort_task_t *taskHandle)
+eaPort_status_t eaPort_Get_Task_Info (eaPort_task_info_t *taskInfo, eaPort_task_t *taskHandle)
 {
     
     if (taskInfo == NULL || taskHandle == NULL) {
         eaPort_task_info_t emptyInfo = {0};
         *taskInfo = emptyInfo;
-        return;
+        return eaPort_STATUS_ERROR;
     }
 
     TaskHandle_t handle = (TaskHandle_t)(*taskHandle);
@@ -228,6 +293,11 @@ void eaPort_Get_Task_Info (eaPort_task_info_t *taskInfo, eaPort_task_t *taskHand
         taskInfo->uxCurrentPriority = uxTaskPriorityGet(handle);
         taskInfo->uxStackHighWaterMark = uxTaskGetStackHighWaterMark(handle);
     #endif
+    if (taskInfo->pcTaskName == NULL) {
+        taskInfo->pcTaskName = "";
+        return eaPort_STATUS_ERROR;
+    }
+    return eaPort_STATUS_OK;
 }
 
 eaPort_task_t eaPort_Get_Current_Task_Handle()
@@ -388,6 +458,16 @@ char eaPort_Get_Task_State_char(const eaPort_task_info_t* taskStatus)
 eaPort_tick_t eaPort_Get_Tick_Time(void)
 {
     return (eaPort_tick_t)xTaskGetTickCount();
+}
+
+void eaPort_Delay_Milliseconds(uint32_t ms)
+{
+    vTaskDelay(pdMS_TO_TICKS(ms));
+}
+
+void eaPort_Delay_Until(eaPort_tick_t *previousWakeTime, uint32_t timeIncrementMs)
+{
+    vTaskDelayUntil((TickType_t *)previousWakeTime, pdMS_TO_TICKS(timeIncrementMs));
 }
 
 

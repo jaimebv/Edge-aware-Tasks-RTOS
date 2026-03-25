@@ -1,5 +1,5 @@
 /**
- * @file port_freertos.h
+ * @file port_rtos_freertos.h
  * @brief FreeRTOS Scheduler Abstraction Layer
  *
  * This module provides a hardware-independent abstraction layer for FreeRTOS
@@ -19,8 +19,8 @@
  *
  */
 
-#ifndef PORT_FREERTOS_H
-#define PORT_FREERTOS_H
+#ifndef PORT_RTOS_FREERTOS_H
+#define PORT_RTOS_FREERTOS_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -29,6 +29,7 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
+#include "freertos/queue.h"
 #include "port_interface_types.h"
 
 #ifdef __cplusplus
@@ -115,6 +116,49 @@ void eaPort_Mutex_Enter(eaPort_mutex_t mutex);
  * @see eaPort_Mutex_Enter
  */
 void eaPort_Mutex_Exit(eaPort_mutex_t mutex);
+
+
+/*===========================================================================*/
+/* QUEUE MANAGEMENT                                                          */
+/*===========================================================================*/
+
+/**
+ * @brief Creates a new queue.
+ * * @param queue_length The maximum number of items the queue can hold.
+ * @param item_size The size (in bytes) of each item in the queue.
+ * @return eaPort_queue_t Handle to the created queue, or NULL if failed.
+ */
+eaPort_queue_t eaPort_Queue_Create(uint32_t queue_length, uint32_t item_size);
+
+/**
+ * @brief Deletes a queue and frees memory.
+ * @param queue Handle of the queue to delete.
+ */
+void eaPort_Queue_Delete(eaPort_queue_t queue);
+
+/**
+ * @brief Sends an item to the queue (Copy by value).
+ * * @param queue The queue handle.
+ * @param item Pointer to the item to copy into the queue.
+ * @param wait_ms Time to wait in milliseconds if queue is full. 
+ * Use eaPort_WAIT_FOREVER or eaPort_NO_WAIT.
+ * @return eaPort_status_t eaPort_STATUS_OK on success, eaPort_STATUS_ERROR on timeout/fail.
+ */
+eaPort_status_t eaPort_Queue_Send(eaPort_queue_t queue, const void *item, uint32_t wait_ms);
+
+/**
+ * @brief Receives an item from the queue.
+ * * @param queue The queue handle.
+ * @param buffer Pointer to memory where the item will be copied.
+ * @param wait_ms Time to wait in milliseconds if queue is empty.
+ * @return eaPort_status_t eaPort_STATUS_OK on success, eaPort_STATUS_ERROR on timeout/fail.
+ */
+eaPort_status_t eaPort_Queue_Receive(eaPort_queue_t queue, void *buffer, uint32_t wait_ms);
+
+/**
+ * @brief Returns the number of items currently stored in the queue.
+ */
+uint32_t eaPort_Queue_Messages_Waiting(eaPort_queue_t queue);
 
 
 /*===========================================================================*/
@@ -278,10 +322,27 @@ eaPort_tick_t eaPort_Get_Tick_Time(void);
 
 
 /**
+ * @brief Delays the calling task for a specified number of milliseconds.
+ * Puts the task into the Blocked state for at least the specified duration.
+ */
+void eaPort_Delay_Milliseconds(uint32_t ms);
+
+
+/**
+ * @brief Delays a task until a specified time increment has elapsed.
+ * Puts the task into the Blocked state until the next wake time.
+ * @param[in,out] previousWakeTime Pointer to the last wake time (in ticks).
+ *                                 Updated to the new wake time.
+ * @param[in] timeIncrementMs Time increment in milliseconds to delay.
+ */
+void eaPort_Delay_Until(eaPort_tick_t *previousWakeTime, uint32_t timeIncrementMs);
+
+
+/**
  * @brief Retrieves detailed information about a specific task.
  * Populates the provided eaPort_task_info_t structure with data
  */
-void eaPort_Get_Task_Info (eaPort_task_info_t *taskInfo, eaPort_task_t *taskHandle);
+eaPort_status_t eaPort_Get_Task_Info (eaPort_task_info_t *taskInfo, eaPort_task_t *taskHandle);
 
 
 /**
@@ -325,4 +386,4 @@ eaPort_task_t eaPort_Get_Task_Handle_By_Name(const char* taskName);
 }
 #endif
 
-#endif /* PORT_FREERTOS_H */
+#endif /* PORT_RTOS_FREERTOS_H */

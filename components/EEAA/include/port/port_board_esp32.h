@@ -1,5 +1,5 @@
 /**
- * @file port_esp32.h
+ * @file port_board_esp32.h
  * @brief ESP32 Platform Abstraction Layer Implementation
  *
  * This module provides ESP32-specific (Xtensa) implementations and interfaces
@@ -11,8 +11,8 @@
  * Platform: ESP32 (Xtensa, dual-core)
  */
 
-#ifndef PORT_ESP32_H
-#define PORT_ESP32_H
+#ifndef PORT_BOARD_ESP32_H
+#define PORT_BOARD_ESP32_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -133,4 +133,4 @@ uint32_t eaPort_Cycles_to_ms(uint32_t cycles);
 }
 #endif
 
-#endif /* PORT_ESP32_H */
+#endif /* PORT_BOARD_ESP32_H */

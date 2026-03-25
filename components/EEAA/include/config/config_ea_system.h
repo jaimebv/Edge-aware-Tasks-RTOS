@@ -29,6 +29,10 @@ extern "C" {
 #define CONFIG_EA_PLATFORM          CONFIG_EA_ESP32_BOARD  
 #define CONFIG_EA_RTOS_SCHEDULER    CONFIG_EA_FREERTOS_SCHEDULER
 
+
+#define CONFIG_EA_MAX_TASK_NAME_LEN  16
+#define CONFIG_EA_MAX_TASKS          16
+
 #ifdef __cplusplus
 }
 #endif
