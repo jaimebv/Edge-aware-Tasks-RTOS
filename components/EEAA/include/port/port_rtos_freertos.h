@@ -1,5 +1,5 @@
 /**
- * @file port_freertos.h
+ * @file port_rtos_freertos.h
  * @brief FreeRTOS Scheduler Abstraction Layer
  *
  * This module provides a hardware-independent abstraction layer for FreeRTOS
@@ -19,8 +19,8 @@
  *
  */
 
-#ifndef PORT_FREERTOS_H
-#define PORT_FREERTOS_H
+#ifndef PORT_RTOS_FREERTOS_H
+#define PORT_RTOS_FREERTOS_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -386,4 +386,4 @@ eaPort_task_t eaPort_Get_Task_Handle_By_Name(const char* taskName);
 }
 #endif
 
-#endif /* PORT_FREERTOS_H */
+#endif /* PORT_RTOS_FREERTOS_H */

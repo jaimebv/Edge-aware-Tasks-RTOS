@@ -1,5 +1,5 @@
 /**
- * @file port_freertos.c
+ * @file port_rtos_freertos.c
  * @brief FreeRTOS Scheduler Abstraction Layer Implementation
  *
  * This module implements portable wrappers around FreeRTOS APIs.
@@ -18,7 +18,7 @@
  * @date 2025
  */
 
-#include "port/port_freertos.h"
+#include "port/port_rtos_freertos.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
