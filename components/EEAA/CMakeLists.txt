@@ -2,7 +2,7 @@
 
 # Register this folder as an ESP-IDF component:
 idf_component_register(
-  SRCS  "src/port/port_esp32.c"
+  SRCS  "src/port/port__board_esp32.c"
         "src/port/port_freertos.c"
         "src/core/task_manager.c"
   INCLUDE_DIRS "include"

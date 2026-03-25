@@ -33,7 +33,7 @@
 #if CONFIG_EA_PLATFORM == CONFIG_EA_ESP32_BOARD
 
     /* FreeRTOS is the default RTOS implementation */
-    #include "port_esp32.h"
+    #include "port_board_esp32.h"
 
 
 #else

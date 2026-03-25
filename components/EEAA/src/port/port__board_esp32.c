@@ -1,5 +1,5 @@
 /**
- * @file port_esp32.c
+ * @file port__board_esp32.c
  * @brief ESP32 Platform Abstraction Layer Implementation
  *
  * @author Jaime S Burbano
@@ -7,7 +7,7 @@
  * @date 2025
 */
 #include "config/config_ea_system.h"
-#include "port/port_esp32.h"
+#include "port/port_board_esp32.h"
 
 #include "esp_private/esp_clk.h"
 #include <xtensa/hal.h>
