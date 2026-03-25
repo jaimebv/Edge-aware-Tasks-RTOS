@@ -55,7 +55,7 @@
 #if CONFIG_EA_RTOS_SCHEDULER == CONFIG_EA_FREERTOS_SCHEDULER
 
     /* FreeRTOS is the default RTOS implementation */
-    #include "port_freertos.h"
+    #include "port_rtos_freertos.h"
 
 #elif CONFIG_EA_RTOS_SCHEDULER == CONFIG_EA_CUSTOM_SCHEDULER
     #include "port_custom.h"
