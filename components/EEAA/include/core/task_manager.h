@@ -161,18 +161,26 @@ typedef struct {
 
 
 /**
- * @brief 
- * Structure used to pass communication queues to an edge task.
- *  The client uses queue_client_server to send to the server, and the server uses
- * queue_server_client to reply to the client.
+ * @brief Immutable configuration for a paired edge task.
+ *
+ * The spec is consumed during creation time to size the queues used by the
+ * client/server pair.
  */
 typedef struct {
-  eaPort_queue_t queue_client_server;           // Client-to-server queue
-  eaPort_queue_t queue_server_client;           // Server-to-client queue
-  uint32_t  abs_deadline;                       // Absolute deadline in ms
-  eaPort_task_t  HandlerServer;                 // Server task handle
-  eaPort_task_t  HandlerClient;                 // Client task handle
-} edge_task_params_t;
+  uint32_t queue_depth;
+  uint32_t message_size;
+} edge_task_pair_spec_t;
+
+
+/**
+ * @brief Runtime state shared by the paired client/server tasks.
+ */
+typedef struct {
+  eaPort_queue_t queue_client_server;
+  eaPort_queue_t queue_server_client;
+  eaPort_task_t  HandlerServer;
+  eaPort_task_t  HandlerClient;
+} edge_task_pair_runtime_t;
 
 
 /*===========================================================================*/
@@ -224,6 +232,7 @@ int CreateEATaskPinnedToCore(
     uint8_t DelaySensibility, 
     uint8_t EnergySensibility, 
     edge_task_execution_site_t DefaultExecutionSite, 
+    const edge_task_pair_spec_t *pairSpec,
     const char *const HostName, 
     uint32_t xPeriod, 
     unsigned WCET_c, 
