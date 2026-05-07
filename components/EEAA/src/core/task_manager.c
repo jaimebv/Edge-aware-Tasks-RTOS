@@ -12,10 +12,6 @@
 edge_task_monitor_t monitoredTasks[CONFIG_EA_MAX_TASKS];
 size_t numMonitoredTasks = 0;
 static eaPort_mutex_t monitoredTasksMux = eaPort_MUTEX_INIT;
-static const edge_task_pair_spec_t kDefaultPairSpec = {
-    .queue_depth = 10U,
-    .message_size = sizeof(void *),
-};
 
 void task_manager_init(void) {
     if (monitoredTasksMux == NULL) {
@@ -80,6 +76,16 @@ bool get_task_snapshot(const char* taskName, task_snapshot_t* out_snapshot)
     return found;
 }
 
+size_t get_num_monitored_tasks(void)
+{
+    ensure_initialized();
+
+    eaPort_Mutex_Enter(monitoredTasksMux);
+    size_t count = numMonitoredTasks;
+    eaPort_Mutex_Exit(monitoredTasksMux);
+
+    return count;
+}
 
 
 int _CreateTaskPinnedToCore_(
@@ -223,12 +229,16 @@ int CreateEATaskPinnedToCore(
     unsigned WCET_s)
 {
     int task_index = 0;
-    const edge_task_pair_spec_t *resolvedSpec = pairSpec ? pairSpec : &kDefaultPairSpec;
+    const edge_task_pair_spec_t *resolvedSpec = pairSpec;
 
   
     // Normalize Core ID for naming (handle -1 for no affinity)
     int actualCore = (CoreID == eaPort_NO_AFFINITY) ? 0 : CoreID; 
 
+    if (resolvedSpec == NULL) {
+        printf("Error: edge task pair specification is required.\n");
+        return -1;
+    }
 
     if (resolvedSpec->queue_depth == 0U || resolvedSpec->message_size == 0U) {
         printf("Error: Invalid edge task pair specification.\n");
@@ -393,4 +403,3 @@ static uint32_t lcm(uint32_t a, uint32_t b) {
     if (a == 0 || b == 0) return 0;
     return (a / gcd(a, b)) * b;
 }
-

@@ -5,7 +5,7 @@
 #include "port/port_rtos.h"
 #include "core/task_manager.h"
 
-#define TASK_PAIR_QUEUE_DEPTH   10U
+#define TASK_PAIR_QUEUE_DEPTH   1U
 #define TASK_PAIR_MESSAGE_SIZE  sizeof(int)
 #define TASK_PAIR_PERIOD_MS     1000U
 

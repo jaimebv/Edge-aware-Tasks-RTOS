@@ -163,6 +163,7 @@ typedef struct {
 /**
  * @brief Immutable configuration for a paired edge task.
  *
+ * The caller must provide the queue contract explicitly.
  * The spec is consumed during creation time to size the queues used by the
  * client/server pair.
  */
@@ -241,6 +242,8 @@ int CreateEATaskPinnedToCore(
 /*===========================================================================*/
 /* GET METHODS                                                         */
 /*===========================================================================*/
+
+bool get_task_snapshot(const char* taskName, task_snapshot_t* out_snapshot);
 
 size_t get_num_monitored_tasks(void);
 
