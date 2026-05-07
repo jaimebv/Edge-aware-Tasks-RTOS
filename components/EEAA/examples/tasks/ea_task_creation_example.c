@@ -27,7 +27,11 @@ static void task_sensor_client(void *pvParameters)
         return;
     }
 
-    printf("[Client] Started. Runtime at %p\n", (void *)runtime);
+    printf("[Client] Started. Runtime at %p (pair=%" PRIu32 ", task=%d, peer=%d)\n",
+           (void *)runtime,
+           edge_task_pair_id(runtime),
+           edge_task_pair_task_index(runtime),
+           edge_task_pair_peer_index(runtime));
 
     while (1) {
         sensor_data++;
@@ -60,7 +64,11 @@ static void task_processor_server(void *pvParameters)
         return;
     }
 
-    printf("[Server] Started.\n");
+    printf("[Server] Started. Runtime at %p (pair=%" PRIu32 ", task=%d, peer=%d)\n",
+           (void *)runtime,
+           edge_task_pair_id(runtime),
+           edge_task_pair_task_index(runtime),
+           edge_task_pair_peer_index(runtime));
 
     while (1) {
         if (eaPort_Queue_Receive(in_queue, &received_data, eaPort_WAIT_FOREVER) == eaPort_STATUS_OK) {

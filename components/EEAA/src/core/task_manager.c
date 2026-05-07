@@ -12,21 +12,113 @@ struct edge_task_pair_runtime {
     eaPort_queue_t queue_server_client;
     eaPort_task_t  HandlerServer;
     eaPort_task_t  HandlerClient;
+    uint32_t       pair_id;
+    int32_t        client_index;
+    int32_t        server_index;
     char           client_name[CONFIG_EA_MAX_TASK_NAME_LEN];
     char           server_name[CONFIG_EA_MAX_TASK_NAME_LEN];
     char           host_name[CONFIG_EA_MAX_TASK_NAME_LEN];
     edge_task_pair_role_t role;
 };
 
+#define EDGE_TASK_RUNTIME_CHUNK_SIZE 4U
+
+typedef struct edge_task_runtime_slot {
+    edge_task_pair_runtime_t runtime;
+    struct edge_task_runtime_slot *next_free;
+    bool in_use;
+} edge_task_runtime_slot_t;
+
+typedef struct edge_task_runtime_chunk {
+    struct edge_task_runtime_chunk *next;
+    edge_task_runtime_slot_t slots[EDGE_TASK_RUNTIME_CHUNK_SIZE];
+} edge_task_runtime_chunk_t;
+
+static edge_task_runtime_chunk_t *runtimeChunks = NULL;
+static edge_task_runtime_slot_t *runtimeFreeList = NULL;
+static eaPort_mutex_t runtimeRegistryMux = eaPort_MUTEX_INIT;
 
 
-edge_task_monitor_t monitoredTasks[CONFIG_EA_MAX_TASKS];
+
+static edge_task_monitor_hot_t monitoredTaskHot[CONFIG_EA_MAX_TASKS];
+static edge_task_monitor_cold_t monitoredTaskCold[CONFIG_EA_MAX_TASKS];
 size_t numMonitoredTasks = 0;
 static eaPort_mutex_t monitoredTasksMux = eaPort_MUTEX_INIT;
+static uint32_t nextPairId = 1U;
+
+static void runtime_registry_init(void)
+{
+    if (runtimeRegistryMux == NULL) {
+        runtimeRegistryMux = eaPort_Mutex_Create();
+    }
+}
+
+static bool runtime_registry_expand(void)
+{
+    edge_task_runtime_chunk_t *chunk = (edge_task_runtime_chunk_t *)eaPort_Malloc(sizeof(*chunk));
+    if (chunk == NULL) {
+        return false;
+    }
+
+    memset(chunk, 0, sizeof(*chunk));
+    chunk->next = runtimeChunks;
+    runtimeChunks = chunk;
+
+    for (size_t i = 0; i < EDGE_TASK_RUNTIME_CHUNK_SIZE; ++i) {
+        chunk->slots[i].next_free = runtimeFreeList;
+        runtimeFreeList = &chunk->slots[i];
+    }
+
+    return true;
+}
+
+static edge_task_pair_runtime_t *reserve_pair_runtime(void)
+{
+    runtime_registry_init();
+
+    eaPort_Mutex_Enter(runtimeRegistryMux);
+    if (runtimeFreeList == NULL && !runtime_registry_expand()) {
+        eaPort_Mutex_Exit(runtimeRegistryMux);
+        return NULL;
+    }
+
+    edge_task_runtime_slot_t *slot = runtimeFreeList;
+    runtimeFreeList = slot->next_free;
+    slot->next_free = NULL;
+    slot->in_use = true;
+    memset(&slot->runtime, 0, sizeof(slot->runtime));
+    eaPort_Mutex_Exit(runtimeRegistryMux);
+
+    return &slot->runtime;
+}
+
+static void release_pair_runtime_impl(edge_task_pair_runtime_t *runtime)
+{
+    if (runtime == NULL) {
+        return;
+    }
+
+    edge_task_runtime_slot_t *slot = (edge_task_runtime_slot_t *)((uint8_t *)runtime - offsetof(edge_task_runtime_slot_t, runtime));
+
+    runtime_registry_init();
+    eaPort_Mutex_Enter(runtimeRegistryMux);
+    if (slot->in_use) {
+        slot->in_use = false;
+        memset(&slot->runtime, 0, sizeof(slot->runtime));
+        slot->next_free = runtimeFreeList;
+        runtimeFreeList = slot;
+    }
+    eaPort_Mutex_Exit(runtimeRegistryMux);
+}
 
 static void record_monitor_from_task(
-    edge_task_monitor_t *t,
+    edge_task_monitor_hot_t *hot,
+    edge_task_monitor_cold_t *cold,
     const char *pcName,
+    const char *pcHost,
+    uint32_t pair_id,
+    int32_t task_index,
+    int32_t peer_index,
     edge_task_execution_site_t pcExec,
     uint8_t xCoreID,
     unsigned MAE2EL,
@@ -35,32 +127,80 @@ static void record_monitor_from_task(
     uint32_t xPeriod,
     unsigned WCET)
 {
-    memset(t, 0, sizeof(*t));
-    strncpy(t->name, pcName, CONFIG_EA_MAX_TASK_NAME_LEN - 1);
-    t->name[CONFIG_EA_MAX_TASK_NAME_LEN - 1] = '\0';
-    t->signal_request = SIGNAL_WAIT;
-    t->exec_site = pcExec;
-    t->core = xCoreID;
-    t->MAE2EL = MAE2EL;
-    t->WCET = WCET;
-    t->period = xPeriod;
-    t->delay_weight = delay_weight;
-    t->energy_weight = energy_weight;
-    t->cpu_cycles = 0;
-    t->data_size = 0;
-    t->OE2EL = 0;
-    t->start_tick = 0;
-    t->end_tick = 0;
-    t->is_active = true;
+    memset(hot, 0, sizeof(*hot));
+    memset(cold, 0, sizeof(*cold));
+    strncpy(cold->name, pcName, CONFIG_EA_MAX_TASK_NAME_LEN - 1);
+    cold->name[CONFIG_EA_MAX_TASK_NAME_LEN - 1] = '\0';
+    if (pcHost != NULL) {
+        strncpy(cold->host, pcHost, CONFIG_EA_MAX_TASK_NAME_LEN - 1);
+        cold->host[CONFIG_EA_MAX_TASK_NAME_LEN - 1] = '\0';
+    }
+    hot->pair_id = pair_id;
+    hot->task_index = task_index;
+    hot->peer_index = peer_index;
+    cold->pair_id = pair_id;
+    cold->task_index = task_index;
+    cold->peer_index = peer_index;
+    cold->exec_site = pcExec;
+    cold->MAE2EL = MAE2EL;
+    cold->WCET = WCET;
+    cold->period = xPeriod;
+    cold->delay_weight = delay_weight;
+    cold->energy_weight = energy_weight;
+
+    hot->signal_request = SIGNAL_WAIT;
+    hot->core = xCoreID;
+    hot->cpu_cycles = 0;
+    hot->data_size = 0;
+    hot->OE2EL = 0;
+    hot->start_tick = 0;
+    hot->end_tick = 0;
+    hot->is_active = true;
+}
+
+static void update_monitor_linkage_by_index(size_t slot_index, uint32_t pair_id, int32_t task_index, int32_t peer_index)
+{
+    if (slot_index >= CONFIG_EA_MAX_TASKS) {
+        return;
+    }
+
+    monitoredTaskHot[slot_index].pair_id = pair_id;
+    monitoredTaskHot[slot_index].task_index = task_index;
+    monitoredTaskHot[slot_index].peer_index = peer_index;
+    monitoredTaskCold[slot_index].pair_id = pair_id;
+    monitoredTaskCold[slot_index].task_index = task_index;
+    monitoredTaskCold[slot_index].peer_index = peer_index;
+}
+
+static void clear_monitor_slot(size_t slot_index)
+{
+    if (slot_index >= CONFIG_EA_MAX_TASKS) {
+        return;
+    }
+
+    memset(&monitoredTaskHot[slot_index], 0, sizeof(monitoredTaskHot[slot_index]));
+    memset(&monitoredTaskCold[slot_index], 0, sizeof(monitoredTaskCold[slot_index]));
+
+    while (numMonitoredTasks > 0U && !monitoredTaskHot[numMonitoredTasks - 1U].is_active) {
+        --numMonitoredTasks;
+    }
+}
+
+void edge_task_pair_runtime_release(edge_task_pair_runtime_t *runtime)
+{
+    release_pair_runtime_impl(runtime);
 }
 
 void task_manager_init(void) {
     if (monitoredTasksMux == NULL) {
         monitoredTasksMux = eaPort_Mutex_Create();
+        runtime_registry_init();
         // Initialize monitored tasks array of size CONFIG_EA_MAX_TASKS
         // sets all entries to inactive
-        memset(monitoredTasks, 0, sizeof(monitoredTasks));
+        memset(monitoredTaskHot, 0, sizeof(monitoredTaskHot));
+        memset(monitoredTaskCold, 0, sizeof(monitoredTaskCold));
         numMonitoredTasks = 0;
+        nextPairId = 1U;
     }
 }
 
@@ -83,16 +223,16 @@ bool get_task_snapshot(const char* taskName, task_snapshot_t* out_snapshot)
     
     /* 1. Perform lookup INSIDE the lock */
     for (size_t i = 0; i < CONFIG_EA_MAX_TASKS; i++) {
-        if (monitoredTasks[i].is_active && 
-            strncmp(monitoredTasks[i].name, taskName, CONFIG_EA_MAX_TASK_NAME_LEN) == 0) {
+        if (monitoredTaskHot[i].is_active && 
+            strncmp(monitoredTaskCold[i].name, taskName, CONFIG_EA_MAX_TASK_NAME_LEN) == 0) {
             
             /* 2. Atomic Copy */
-            strncpy(out_snapshot->name, monitoredTasks[i].name, CONFIG_EA_MAX_TASK_NAME_LEN - 1);
+            strncpy(out_snapshot->name, monitoredTaskCold[i].name, CONFIG_EA_MAX_TASK_NAME_LEN - 1);
             out_snapshot->name[CONFIG_EA_MAX_TASK_NAME_LEN - 1] = '\0';
-            out_snapshot->cpu_cycles = monitoredTasks[i].cpu_cycles;
-            out_snapshot->period     = monitoredTasks[i].period;
-            out_snapshot->WCET       = monitoredTasks[i].WCET;
-            out_snapshot->OE2EL      = monitoredTasks[i].OE2EL;
+            out_snapshot->cpu_cycles = monitoredTaskHot[i].cpu_cycles;
+            out_snapshot->period     = monitoredTaskCold[i].period;
+            out_snapshot->WCET       = monitoredTaskCold[i].WCET;
+            out_snapshot->OE2EL      = monitoredTaskHot[i].OE2EL;
             out_snapshot->valid      = true;
             
             found = true;
@@ -110,10 +250,227 @@ size_t get_num_monitored_tasks(void)
     ensure_initialized();
 
     eaPort_Mutex_Enter(monitoredTasksMux);
-    size_t count = numMonitoredTasks;
+    size_t count = 0U;
+    for (size_t i = 0; i < CONFIG_EA_MAX_TASKS; ++i) {
+        if (monitoredTaskHot[i].is_active) {
+            ++count;
+        }
+    }
     eaPort_Mutex_Exit(monitoredTasksMux);
 
     return count;
+}
+
+static bool monitor_index_valid(int taskIndex)
+{
+    return taskIndex >= 0 && taskIndex < (int)CONFIG_EA_MAX_TASKS && monitoredTaskHot[taskIndex].is_active;
+}
+
+static const char *execution_site_to_string(edge_task_execution_site_t site)
+{
+    switch (site) {
+        case LOCAL_EXECUTION:
+            return "LOCAL_EXECUTION";
+        case REMOTE_EXECUTION:
+            return "REMOTE_EXECUTION";
+        default:
+            return "UNKNOWN";
+    }
+}
+
+int get_task_index(const char *taskName)
+{
+    return find_task_index(taskName);
+}
+
+int get_task_signal(int taskIndex)
+{
+    ensure_initialized();
+    if (!monitor_index_valid(taskIndex)) {
+        return -1;
+    }
+
+    eaPort_Mutex_Enter(monitoredTasksMux);
+    int signal = (int)monitoredTaskHot[taskIndex].signal_request;
+    eaPort_Mutex_Exit(monitoredTasksMux);
+    return signal;
+}
+
+const char* get_task_ex_site(const char *taskName)
+{
+    ensure_initialized();
+    if (taskName == NULL) {
+        return "UNKNOWN";
+    }
+
+    eaPort_Mutex_Enter(monitoredTasksMux);
+    const char *site = "UNKNOWN";
+    for (size_t i = 0; i < CONFIG_EA_MAX_TASKS; ++i) {
+        if (monitoredTaskHot[i].is_active && strncmp(monitoredTaskCold[i].name, taskName, CONFIG_EA_MAX_TASK_NAME_LEN) == 0) {
+            site = execution_site_to_string(monitoredTaskCold[i].exec_site);
+            break;
+        }
+    }
+    eaPort_Mutex_Exit(monitoredTasksMux);
+    return site;
+}
+
+uint32_t get_task_cpu_cycles(int taskIndex)
+{
+    ensure_initialized();
+    if (!monitor_index_valid(taskIndex)) {
+        return 0U;
+    }
+
+    eaPort_Mutex_Enter(monitoredTasksMux);
+    uint32_t value = monitoredTaskHot[taskIndex].cpu_cycles;
+    eaPort_Mutex_Exit(monitoredTasksMux);
+    return value;
+}
+
+uint32_t get_task_data_size(int taskIndex)
+{
+    ensure_initialized();
+    if (!monitor_index_valid(taskIndex)) {
+        return 0U;
+    }
+
+    eaPort_Mutex_Enter(monitoredTasksMux);
+    uint32_t value = monitoredTaskHot[taskIndex].data_size;
+    eaPort_Mutex_Exit(monitoredTasksMux);
+    return value;
+}
+
+unsigned get_task_OE2EL(int taskIndex)
+{
+    ensure_initialized();
+    if (!monitor_index_valid(taskIndex)) {
+        return 0U;
+    }
+
+    eaPort_Mutex_Enter(monitoredTasksMux);
+    unsigned value = monitoredTaskHot[taskIndex].OE2EL;
+    eaPort_Mutex_Exit(monitoredTasksMux);
+    return value;
+}
+
+unsigned get_task_WCET(int taskIndex)
+{
+    ensure_initialized();
+    if (!monitor_index_valid(taskIndex)) {
+        return 0U;
+    }
+
+    eaPort_Mutex_Enter(monitoredTasksMux);
+    unsigned value = monitoredTaskCold[taskIndex].WCET;
+    eaPort_Mutex_Exit(monitoredTasksMux);
+    return value;
+}
+
+edge_task_monitor_sample_t start_task_monitoring(void)
+{
+    edge_task_monitor_sample_t sample = {0};
+    sample.start_tick = (uint32_t)eaPort_Get_Tick_Time();
+    sample.start_cycles = eaPort_Get_Cpu_Cycles();
+    return sample;
+}
+
+int end_task_monitoring(edge_task_monitor_sample_t sample, uint32_t message_size)
+{
+    return end_task_monitoring_(sample, message_size, 0U, false);
+}
+
+int end_task_monitoring_(edge_task_monitor_sample_t sample, uint32_t message_size, uint32_t remote_time, bool remote_flag)
+{
+    (void)remote_time;
+    (void)remote_flag;
+    uint32_t end_tick = (uint32_t)eaPort_Get_Tick_Time();
+    uint32_t end_cycles = eaPort_Get_Cpu_Cycles();
+    uint32_t delta_cycles = (end_cycles >= sample.start_cycles) ? (end_cycles - sample.start_cycles) : 0U;
+    return (int)(delta_cycles + message_size + (end_tick - sample.start_tick));
+}
+
+void check_self_suspend(int taskIndex)
+{
+    ensure_initialized();
+    if (!monitor_index_valid(taskIndex)) {
+        return;
+    }
+
+    eaPort_Mutex_Enter(monitoredTasksMux);
+    bool should_suspend = (monitoredTaskHot[taskIndex].signal_request == SIGNAL_SUSPEND);
+    eaPort_Mutex_Exit(monitoredTasksMux);
+
+    if (should_suspend) {
+        eaPort_Task_Suspend(NULL);
+    }
+}
+
+void update_task_metrics(const char *taskName, uint32_t newOE2EL, uint32_t newCycles, uint32_t newStartTick, uint32_t newEndTick, uint32_t newDataSize)
+{
+    int taskIndex = find_task_index(taskName);
+    update_task_metrics_by_index(taskIndex, newOE2EL, newCycles, newStartTick, newEndTick, newDataSize);
+}
+
+void update_task_metrics_by_index(int taskIndex, uint32_t newOE2EL, uint32_t newCycles, uint32_t newStartTick, uint32_t newEndTick, uint32_t newDataSize)
+{
+    ensure_initialized();
+    if (!monitor_index_valid(taskIndex)) {
+        return;
+    }
+
+    eaPort_Mutex_Enter(monitoredTasksMux);
+    monitoredTaskHot[taskIndex].OE2EL = newOE2EL;
+    monitoredTaskHot[taskIndex].cpu_cycles = newCycles;
+    monitoredTaskHot[taskIndex].start_tick = newStartTick;
+    monitoredTaskHot[taskIndex].end_tick = newEndTick;
+    monitoredTaskHot[taskIndex].data_size = newDataSize;
+    eaPort_Mutex_Exit(monitoredTasksMux);
+}
+
+void update_task_metrics_OE2EL(const char *taskName, uint32_t newOE2EL)
+{
+    int taskIndex = find_task_index(taskName);
+    if (taskIndex >= 0) {
+        update_task_metrics_by_index(taskIndex, newOE2EL, monitoredTaskHot[taskIndex].cpu_cycles, monitoredTaskHot[taskIndex].start_tick, monitoredTaskHot[taskIndex].end_tick, monitoredTaskHot[taskIndex].data_size);
+    }
+}
+
+int find_task_index(const char *taskName)
+{
+    ensure_initialized();
+    if (taskName == NULL) {
+        return -1;
+    }
+
+    eaPort_Mutex_Enter(monitoredTasksMux);
+    for (size_t i = 0; i < CONFIG_EA_MAX_TASKS; ++i) {
+        if (monitoredTaskHot[i].is_active && strncmp(monitoredTaskCold[i].name, taskName, CONFIG_EA_MAX_TASK_NAME_LEN) == 0) {
+            eaPort_Mutex_Exit(monitoredTasksMux);
+            return (int)i;
+        }
+    }
+    eaPort_Mutex_Exit(monitoredTasksMux);
+    return -1;
+}
+
+void remove_monitored_task(const char *taskName)
+{
+    int taskIndex = find_task_index(taskName);
+    if (taskIndex >= 0) {
+        clear_monitor_slot((size_t)taskIndex);
+    }
+}
+
+int is_client_task(const char* str)
+{
+    return (str != NULL && strstr(str, "-cl-") != NULL) ? 1 : 0;
+}
+
+uint32_t tasks_compute_hyperperiod(void)
+{
+    ensure_initialized();
+    return 0U;
 }
 
 eaPort_queue_t edge_task_pair_queue_client_to_server(const edge_task_pair_runtime_t *runtime)
@@ -156,6 +513,21 @@ edge_task_pair_role_t edge_task_pair_role(const edge_task_pair_runtime_t *runtim
     return runtime ? runtime->role : EDGE_TASK_PAIR_LOCAL;
 }
 
+uint32_t edge_task_pair_id(const edge_task_pair_runtime_t *runtime)
+{
+    return runtime ? runtime->pair_id : 0U;
+}
+
+int edge_task_pair_task_index(const edge_task_pair_runtime_t *runtime)
+{
+    return runtime ? runtime->client_index : -1;
+}
+
+int edge_task_pair_peer_index(const edge_task_pair_runtime_t *runtime)
+{
+    return runtime ? runtime->server_index : -1;
+}
+
 
 int _CreateTaskPinnedToCore_(
     eaPort_task_function_t pxTaskCode, 
@@ -170,7 +542,7 @@ int _CreateTaskPinnedToCore_(
     uint8_t delay_weight, 
     uint8_t energy_weight, 
     const char *const pcHost, 
-    const char *const pcRelation, 
+    edge_task_pair_runtime_t *runtime,
     edge_task_execution_site_t pcExec,
     eaPort_task_t *outTaskHandle,
     uint32_t xPeriod,
@@ -179,9 +551,7 @@ int _CreateTaskPinnedToCore_(
 {
     ensure_initialized();
     (void)pcHost;
-    (void)pcRelation;
     (void)app_type;
-    (void)app_segment;
 
     /* 2. Find a free slot (Critical Section - Short) */
     int slotIndex = -1;
@@ -190,7 +560,7 @@ int _CreateTaskPinnedToCore_(
     if (numMonitoredTasks < CONFIG_EA_MAX_TASKS) {
         for (int i = 0; i < CONFIG_EA_MAX_TASKS; i++) {
             // Find first empty slot (inactive)
-            if (!monitoredTasks[i].is_active) {
+            if (!monitoredTaskHot[i].is_active) {
                 slotIndex = i;
                 break;
             }
@@ -232,7 +602,7 @@ int _CreateTaskPinnedToCore_(
     eaPort_Mutex_Enter(monitoredTasksMux);
     
     // Re-verify the slot is still ours (safeguard against weird race conditions)
-    if (monitoredTasks[slotIndex].is_active) {
+    if (monitoredTaskHot[slotIndex].is_active) {
         // This should technically never happen if single-threaded creation, 
         // but good practice.
         eaPort_Mutex_Exit(monitoredTasksMux);
@@ -240,10 +610,16 @@ int _CreateTaskPinnedToCore_(
         return -1; 
     }
 
-    edge_task_monitor_t *t = &monitoredTasks[slotIndex];
     record_monitor_from_task(
-        t,
+        &monitoredTaskHot[slotIndex],
+        &monitoredTaskCold[slotIndex],
         pcName,
+        pcHost,
+        runtime ? runtime->pair_id : 0U,
+        slotIndex,
+        (runtime != NULL)
+            ? ((app_segment == CLIENT_SEGMENT) ? runtime->server_index : (app_segment == SERVER_SEGMENT) ? runtime->client_index : -1)
+            : -1,
         pcExec,
         xCoreID,
         MAE2EL,
@@ -303,13 +679,15 @@ int CreateEATaskPinnedToCore(
         return -1;
     }
 
-    /* 1. Safe Allocation using Wrapper */
-    edge_task_pair_runtime_t *edgeRuntime = (edge_task_pair_runtime_t *)eaPort_Malloc(sizeof(edge_task_pair_runtime_t));
+    /* 1. Reserve a reusable runtime slot */
+    edge_task_pair_runtime_t *edgeRuntime = reserve_pair_runtime();
     if (edgeRuntime == NULL) {
-        printf("Error: Failed to allocate edge task runtime structure.\n");
+        printf("Error: Failed to reserve edge task runtime slot.\n");
         return -1;
     }
-    memset(edgeRuntime, 0, sizeof(*edgeRuntime));
+    edgeRuntime->pair_id = nextPairId++;
+    edgeRuntime->client_index = -1;
+    edgeRuntime->server_index = -1;
     if (HostName != NULL) {
         snprintf(edgeRuntime->host_name, sizeof(edgeRuntime->host_name), "%s", HostName);
     }
@@ -354,7 +732,7 @@ int CreateEATaskPinnedToCore(
             DelaySensibility, 
             EnergySensibility, 
             HostName, 
-            serverBaseName, // Relation
+            edgeRuntime,
             DefaultExecutionSite,
             &edgeRuntime->HandlerClient,
             xPeriod,
@@ -365,6 +743,8 @@ int CreateEATaskPinnedToCore(
             printf("Error: Client task creation failed.\n");
             goto error_cleanup;
         }
+        edgeRuntime->client_index = task_index;
+        update_monitor_linkage_by_index((size_t)task_index, edgeRuntime->pair_id, task_index, edgeRuntime->server_index);
 
         /*If edge task is connected to Local as defalt*/
         //TODO: We should always create the task any how if it is enhanced, just suspend it 
@@ -387,7 +767,7 @@ int CreateEATaskPinnedToCore(
                 DelaySensibility, 
                 EnergySensibility, 
                 HostName, 
-                clientBaseName, // Relation
+                edgeRuntime,
                 DefaultExecutionSite, 
                 &edgeRuntime->HandlerServer,
                 xPeriod,
@@ -398,8 +778,12 @@ int CreateEATaskPinnedToCore(
                 printf("Error: Server task creation failed.\n");
                 // Need to clean up the client task created in step A
                 eaPort_Task_Delete(edgeRuntime->HandlerClient);
+                clear_monitor_slot((size_t)edgeRuntime->client_index);
                 goto error_cleanup;
             }
+            edgeRuntime->server_index = task_index;
+            update_monitor_linkage_by_index((size_t)edgeRuntime->client_index, edgeRuntime->pair_id, edgeRuntime->client_index, edgeRuntime->server_index);
+            update_monitor_linkage_by_index((size_t)edgeRuntime->server_index, edgeRuntime->pair_id, edgeRuntime->server_index, edgeRuntime->client_index);
 
         }
     }
@@ -426,7 +810,7 @@ int CreateEATaskPinnedToCore(
             DelaySensibility, 
             EnergySensibility, 
             "0.0.0.0", 
-            "None", 
+            edgeRuntime, 
             LOCAL_EXECUTION, 
             &edgeRuntime->HandlerClient,
             xPeriod,
@@ -437,6 +821,8 @@ int CreateEATaskPinnedToCore(
             printf("Error: Local task creation failed.\n");
             goto error_cleanup;
         }
+        edgeRuntime->client_index = task_index;
+        update_monitor_linkage_by_index((size_t)task_index, edgeRuntime->pair_id, task_index, -1);
 
     }
 
@@ -447,7 +833,7 @@ error_cleanup:
     if (edgeRuntime) {
         if (edgeRuntime->queue_client_server) eaPort_Queue_Delete(edgeRuntime->queue_client_server);
         if (edgeRuntime->queue_server_client) eaPort_Queue_Delete(edgeRuntime->queue_server_client);
-        eaPort_Free(edgeRuntime);
+        release_pair_runtime_impl(edgeRuntime);
     }
     return -1;
 }

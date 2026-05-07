@@ -37,7 +37,10 @@ static void demo_client_task(void *pvParameters)
         return;
     }
 
-    printf("[Client] Ready\n");
+    printf("[Client] Ready (pair=%" PRIu32 ", task=%d, peer=%d)\n",
+           edge_task_pair_id(runtime),
+           edge_task_pair_task_index(runtime),
+           edge_task_pair_peer_index(runtime));
 
     while (1) {
         sensor_value++;
@@ -69,7 +72,10 @@ static void demo_server_task(void *pvParameters)
         return;
     }
 
-    printf("[Server] Ready\n");
+    printf("[Server] Ready (pair=%" PRIu32 ", task=%d, peer=%d)\n",
+           edge_task_pair_id(runtime),
+           edge_task_pair_task_index(runtime),
+           edge_task_pair_peer_index(runtime));
 
     while (1) {
         if (eaPort_Queue_Receive(in_queue, &received_value, eaPort_WAIT_FOREVER) == eaPort_STATUS_OK) {
