@@ -76,6 +76,16 @@ bool get_task_snapshot(const char* taskName, task_snapshot_t* out_snapshot)
     return found;
 }
 
+size_t get_num_monitored_tasks(void)
+{
+    ensure_initialized();
+
+    eaPort_Mutex_Enter(monitoredTasksMux);
+    size_t count = numMonitoredTasks;
+    eaPort_Mutex_Exit(monitoredTasksMux);
+
+    return count;
+}
 
 
 int _CreateTaskPinnedToCore_(
@@ -212,30 +222,42 @@ int CreateEATaskPinnedToCore(
     uint8_t DelaySensibility, 
     uint8_t EnergySensibility, 
     edge_task_execution_site_t DefaultExecutionSite, 
+    const edge_task_pair_spec_t *pairSpec,
     const char *const HostName, 
     uint32_t xPeriod, 
     unsigned WCET_c, 
     unsigned WCET_s)
 {
     int task_index = 0;
+    const edge_task_pair_spec_t *resolvedSpec = pairSpec;
 
   
     // Normalize Core ID for naming (handle -1 for no affinity)
     int actualCore = (CoreID == eaPort_NO_AFFINITY) ? 0 : CoreID; 
 
-
-    /* 1. Safe Allocation using Wrapper */
-    edge_task_params_t *edgeParams = (edge_task_params_t *)eaPort_Malloc(sizeof(edge_task_params_t));
-    if (edgeParams == NULL) {
-        printf("Error: Failed to allocate edge parameter structure.\n");
+    if (resolvedSpec == NULL) {
+        printf("Error: edge task pair specification is required.\n");
         return -1;
     }
 
-    /* 2. Queue Creation using Wrapper */
-    edgeParams->queue_client_server = eaPort_Queue_Create(10, sizeof(void *));
-    edgeParams->queue_server_client = eaPort_Queue_Create(10, sizeof(void *));
+    if (resolvedSpec->queue_depth == 0U || resolvedSpec->message_size == 0U) {
+        printf("Error: Invalid edge task pair specification.\n");
+        return -1;
+    }
 
-    if (edgeParams->queue_client_server == NULL || edgeParams->queue_server_client == NULL) {
+    /* 1. Safe Allocation using Wrapper */
+    edge_task_pair_runtime_t *edgeRuntime = (edge_task_pair_runtime_t *)eaPort_Malloc(sizeof(edge_task_pair_runtime_t));
+    if (edgeRuntime == NULL) {
+        printf("Error: Failed to allocate edge task runtime structure.\n");
+        return -1;
+    }
+    memset(edgeRuntime, 0, sizeof(*edgeRuntime));
+
+    /* 2. Queue Creation using Wrapper */
+    edgeRuntime->queue_client_server = eaPort_Queue_Create(resolvedSpec->queue_depth, resolvedSpec->message_size);
+    edgeRuntime->queue_server_client = eaPort_Queue_Create(resolvedSpec->queue_depth, resolvedSpec->message_size);
+
+    if (edgeRuntime->queue_client_server == NULL || edgeRuntime->queue_server_client == NULL) {
         printf("Error: Queue creation failed.\n");
         goto error_cleanup;
     }
@@ -257,7 +279,7 @@ int CreateEATaskPinnedToCore(
             TaskCodeClient, 
             clientBaseName, 
             MemStackDepthClient, 
-            (void *)edgeParams, 
+            (void *)edgeRuntime,
             Priority, 
             CoreID, 
             AppType, 
@@ -278,7 +300,7 @@ int CreateEATaskPinnedToCore(
         }
 
         //If no error in client task, store its handler
-        edgeParams->HandlerClient = monitoredTasks[task_index].task_handler;
+        edgeRuntime->HandlerClient = monitoredTasks[task_index].task_handler;
         /*If edge task is connected to Local as defalt*/
         //TODO: We should always create the task any how if it is enhanced, just suspend it 
         // after creatin if DefaultExecutionSite != LOCAL_EXECUTION
@@ -291,7 +313,7 @@ int CreateEATaskPinnedToCore(
                 TaskCodeServer, 
                 serverBaseName, 
                 MemStackDepthServer, 
-                (void *)edgeParams, 
+                (void *)edgeRuntime,
                 Priority, 
                 CoreID, 
                 AppType, 
@@ -309,13 +331,13 @@ int CreateEATaskPinnedToCore(
             if (task_index < 0) {
                 printf("Error: Server task creation failed.\n");
                 // Need to clean up the client task created in step A
-                eaPort_Task_Delete(edgeParams->HandlerClient); 
+                eaPort_Task_Delete(edgeRuntime->HandlerClient);
                 goto error_cleanup;
             }
 
             /* Retrieve Handle Safely */
 
-            edgeParams->HandlerServer = monitoredTasks[task_index].task_handler;
+            edgeRuntime->HandlerServer = monitoredTasks[task_index].task_handler;
         }
     }
     /* 4. Handle Local Tasks */
@@ -328,7 +350,7 @@ int CreateEATaskPinnedToCore(
             TaskCodeClient, 
             localBaseName, 
             MemStackDepthClient, 
-            (void *)edgeParams, 
+            (void *)edgeRuntime,
             Priority, 
             CoreID, 
             AppType, 
@@ -349,17 +371,17 @@ int CreateEATaskPinnedToCore(
         }
 
         /* Retrieve Handle Safely */
-        edgeParams->HandlerClient = monitoredTasks[task_index].task_handler;
+        edgeRuntime->HandlerClient = monitoredTasks[task_index].task_handler;
     }
 
     return 0; // Success
 
 /* 5. Centralized Error Handling */
 error_cleanup:
-    if (edgeParams) {
-        if (edgeParams->queue_client_server) eaPort_Queue_Delete(edgeParams->queue_client_server);
-        if (edgeParams->queue_server_client) eaPort_Queue_Delete(edgeParams->queue_server_client);
-        eaPort_Free(edgeParams);
+    if (edgeRuntime) {
+        if (edgeRuntime->queue_client_server) eaPort_Queue_Delete(edgeRuntime->queue_client_server);
+        if (edgeRuntime->queue_server_client) eaPort_Queue_Delete(edgeRuntime->queue_server_client);
+        eaPort_Free(edgeRuntime);
     }
     return -1;
 }
@@ -381,6 +403,3 @@ static uint32_t lcm(uint32_t a, uint32_t b) {
     if (a == 0 || b == 0) return 0;
     return (a / gcd(a, b)) * b;
 }
-
-
-
