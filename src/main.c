@@ -28,8 +28,10 @@ static void demo_client_task(void *pvParameters)
 {
     edge_task_pair_runtime_t *runtime = (edge_task_pair_runtime_t *)pvParameters;
     int sensor_value = 0;
+    eaPort_queue_t out_queue = edge_task_pair_queue_client_to_server(runtime);
+    eaPort_queue_t in_queue = edge_task_pair_queue_server_to_client(runtime);
 
-    if (runtime == NULL) {
+    if (runtime == NULL || out_queue == NULL || in_queue == NULL) {
         printf("[Client] Missing runtime context\n");
         eaPort_Task_Delete(NULL);
         return;
@@ -41,12 +43,12 @@ static void demo_client_task(void *pvParameters)
         sensor_value++;
         printf("[Client] Sending value: %d\n", sensor_value);
 
-        if (eaPort_Queue_Send(runtime->queue_client_server, &sensor_value, eaPort_WAIT_FOREVER) != eaPort_STATUS_OK) {
+        if (eaPort_Queue_Send(out_queue, &sensor_value, eaPort_WAIT_FOREVER) != eaPort_STATUS_OK) {
             printf("[Client] Failed to send sensor value\n");
         }
 
         int processed_value = 0;
-        if (eaPort_Queue_Receive(runtime->queue_server_client, &processed_value, eaPort_WAIT_FOREVER) == eaPort_STATUS_OK) {
+        if (eaPort_Queue_Receive(in_queue, &processed_value, eaPort_WAIT_FOREVER) == eaPort_STATUS_OK) {
             printf("[Client] Received processed value: %d\n", processed_value);
         }
 
@@ -58,8 +60,10 @@ static void demo_server_task(void *pvParameters)
 {
     edge_task_pair_runtime_t *runtime = (edge_task_pair_runtime_t *)pvParameters;
     int received_value = 0;
+    eaPort_queue_t in_queue = edge_task_pair_queue_client_to_server(runtime);
+    eaPort_queue_t out_queue = edge_task_pair_queue_server_to_client(runtime);
 
-    if (runtime == NULL) {
+    if (runtime == NULL || in_queue == NULL || out_queue == NULL) {
         printf("[Server] Missing runtime context\n");
         eaPort_Task_Delete(NULL);
         return;
@@ -68,12 +72,12 @@ static void demo_server_task(void *pvParameters)
     printf("[Server] Ready\n");
 
     while (1) {
-        if (eaPort_Queue_Receive(runtime->queue_client_server, &received_value, eaPort_WAIT_FOREVER) == eaPort_STATUS_OK) {
+        if (eaPort_Queue_Receive(in_queue, &received_value, eaPort_WAIT_FOREVER) == eaPort_STATUS_OK) {
             int reply_value = received_value + 1000;
             printf("[Server] Processing %d -> replying %d\n", received_value, reply_value);
             eaPort_Delay_Milliseconds(100U);
 
-            if (eaPort_Queue_Send(runtime->queue_server_client, &reply_value, eaPort_WAIT_FOREVER) != eaPort_STATUS_OK) {
+            if (eaPort_Queue_Send(out_queue, &reply_value, eaPort_WAIT_FOREVER) != eaPort_STATUS_OK) {
                 printf("[Server] Failed to send reply\n");
             }
         }
@@ -90,12 +94,12 @@ static void log_task_snapshot(const char *task_name)
     task_snapshot_t snapshot = {0};
 
     if (get_task_snapshot(task_name, &snapshot) && snapshot.valid) {
-        printf("[Demo] %s => host=%s period=%" PRIu32 " WCET=%u OE2EL=%u\n",
-               task_name,
-               snapshot.host ? snapshot.host : "(null)",
+        printf("[Demo] %s => period=%" PRIu32 " WCET=%u OE2EL=%u cycles=%" PRIu32 "\n",
+               snapshot.name[0] ? snapshot.name : task_name,
                snapshot.period,
                snapshot.WCET,
-               snapshot.OE2EL);
+               snapshot.OE2EL,
+               snapshot.cpu_cycles);
     } else {
         printf("[Demo] %s => snapshot unavailable\n", task_name);
     }

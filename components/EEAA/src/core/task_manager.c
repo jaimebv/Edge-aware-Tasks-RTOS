@@ -7,11 +7,52 @@
 #include "port/port_rtos.h"
 
 
+struct edge_task_pair_runtime {
+    eaPort_queue_t queue_client_server;
+    eaPort_queue_t queue_server_client;
+    eaPort_task_t  HandlerServer;
+    eaPort_task_t  HandlerClient;
+    char           client_name[CONFIG_EA_MAX_TASK_NAME_LEN];
+    char           server_name[CONFIG_EA_MAX_TASK_NAME_LEN];
+    char           host_name[CONFIG_EA_MAX_TASK_NAME_LEN];
+    edge_task_pair_role_t role;
+};
+
 
 
 edge_task_monitor_t monitoredTasks[CONFIG_EA_MAX_TASKS];
 size_t numMonitoredTasks = 0;
 static eaPort_mutex_t monitoredTasksMux = eaPort_MUTEX_INIT;
+
+static void record_monitor_from_task(
+    edge_task_monitor_t *t,
+    const char *pcName,
+    edge_task_execution_site_t pcExec,
+    uint8_t xCoreID,
+    unsigned MAE2EL,
+    uint8_t delay_weight,
+    uint8_t energy_weight,
+    uint32_t xPeriod,
+    unsigned WCET)
+{
+    memset(t, 0, sizeof(*t));
+    strncpy(t->name, pcName, CONFIG_EA_MAX_TASK_NAME_LEN - 1);
+    t->name[CONFIG_EA_MAX_TASK_NAME_LEN - 1] = '\0';
+    t->signal_request = SIGNAL_WAIT;
+    t->exec_site = pcExec;
+    t->core = xCoreID;
+    t->MAE2EL = MAE2EL;
+    t->WCET = WCET;
+    t->period = xPeriod;
+    t->delay_weight = delay_weight;
+    t->energy_weight = energy_weight;
+    t->cpu_cycles = 0;
+    t->data_size = 0;
+    t->OE2EL = 0;
+    t->start_tick = 0;
+    t->end_tick = 0;
+    t->is_active = true;
+}
 
 void task_manager_init(void) {
     if (monitoredTasksMux == NULL) {
@@ -30,25 +71,13 @@ static void ensure_initialized(void) {
 }
 
 
-/**
- * @brief Helper to reconstruct the unique name used by the Task Manager.
- * Matches logic: "%s-%u" (Name-CoreID) or "%s-X" (No Affinity)
- */
-static void format_unique_name(char* buffer, size_t size, const char* baseName, int coreID) {
-    if (coreID == eaPort_NO_AFFINITY) {
-        snprintf(buffer, size, "%s-X", baseName);
-    } else {
-        snprintf(buffer, size, "%s-%u", baseName, (unsigned)coreID);
-    }
-}
-
-
 bool get_task_snapshot(const char* taskName, task_snapshot_t* out_snapshot)
 {
     if (taskName == NULL || out_snapshot == NULL) return false;
 
     ensure_initialized();
     bool found = false;
+    memset(out_snapshot, 0, sizeof(*out_snapshot));
 
     eaPort_Mutex_Enter(monitoredTasksMux);
     
@@ -58,12 +87,12 @@ bool get_task_snapshot(const char* taskName, task_snapshot_t* out_snapshot)
             strncmp(monitoredTasks[i].name, taskName, CONFIG_EA_MAX_TASK_NAME_LEN) == 0) {
             
             /* 2. Atomic Copy */
+            strncpy(out_snapshot->name, monitoredTasks[i].name, CONFIG_EA_MAX_TASK_NAME_LEN - 1);
+            out_snapshot->name[CONFIG_EA_MAX_TASK_NAME_LEN - 1] = '\0';
             out_snapshot->cpu_cycles = monitoredTasks[i].cpu_cycles;
             out_snapshot->period     = monitoredTasks[i].period;
             out_snapshot->WCET       = monitoredTasks[i].WCET;
             out_snapshot->OE2EL      = monitoredTasks[i].OE2EL;
-            out_snapshot->host       = monitoredTasks[i].host;
-            out_snapshot->handle     = monitoredTasks[i].task_handler;
             out_snapshot->valid      = true;
             
             found = true;
@@ -87,6 +116,46 @@ size_t get_num_monitored_tasks(void)
     return count;
 }
 
+eaPort_queue_t edge_task_pair_queue_client_to_server(const edge_task_pair_runtime_t *runtime)
+{
+    return runtime ? runtime->queue_client_server : NULL;
+}
+
+eaPort_queue_t edge_task_pair_queue_server_to_client(const edge_task_pair_runtime_t *runtime)
+{
+    return runtime ? runtime->queue_server_client : NULL;
+}
+
+eaPort_task_t edge_task_pair_client_handle(const edge_task_pair_runtime_t *runtime)
+{
+    return runtime ? runtime->HandlerClient : NULL;
+}
+
+eaPort_task_t edge_task_pair_server_handle(const edge_task_pair_runtime_t *runtime)
+{
+    return runtime ? runtime->HandlerServer : NULL;
+}
+
+const char *edge_task_pair_client_name(const edge_task_pair_runtime_t *runtime)
+{
+    return runtime ? runtime->client_name : NULL;
+}
+
+const char *edge_task_pair_server_name(const edge_task_pair_runtime_t *runtime)
+{
+    return runtime ? runtime->server_name : NULL;
+}
+
+const char *edge_task_pair_host_name(const edge_task_pair_runtime_t *runtime)
+{
+    return runtime ? runtime->host_name : NULL;
+}
+
+edge_task_pair_role_t edge_task_pair_role(const edge_task_pair_runtime_t *runtime)
+{
+    return runtime ? runtime->role : EDGE_TASK_PAIR_LOCAL;
+}
+
 
 int _CreateTaskPinnedToCore_(
     eaPort_task_function_t pxTaskCode, 
@@ -103,11 +172,16 @@ int _CreateTaskPinnedToCore_(
     const char *const pcHost, 
     const char *const pcRelation, 
     edge_task_execution_site_t pcExec,
+    eaPort_task_t *outTaskHandle,
     uint32_t xPeriod,
     unsigned WCET
 )
 {
     ensure_initialized();
+    (void)pcHost;
+    (void)pcRelation;
+    (void)app_type;
+    (void)app_segment;
 
     /* 2. Find a free slot (Critical Section - Short) */
     int slotIndex = -1;
@@ -167,36 +241,16 @@ int _CreateTaskPinnedToCore_(
     }
 
     edge_task_monitor_t *t = &monitoredTasks[slotIndex];
-
-    /* -- Fill Strings -- */
-    strncpy(t->name, pcName, CONFIG_EA_MAX_TASK_NAME_LEN - 1);
-    t->name[CONFIG_EA_MAX_TASK_NAME_LEN - 1] = '\0';
-    t->host = pcHost; 
-    t->relation = pcRelation; // Pointing to base relation name is usually sufficient logic-wise
-
-    /* -- Fill Metrics -- */
-    t->task_handler = localTaskHandle;
-    t->relation_handler = NULL; // To be set later if needed
-    t->signal_request = SIGNAL_WAIT;
-    t->type = app_type;
-    t->segment = app_segment;
-    t->exec_site = pcExec;
-    t->core = xCoreID;
-    
-    t->MAE2EL = MAE2EL;
-    t->WCET = WCET;
-    t->period = xPeriod;
-    t->delay_weight = delay_weight;
-    t->energy_weight = energy_weight;
-
-    t->cpu_cycles = 0;
-    t->data_size = 0;
-    t->OE2EL = 0;
-    t->start_tick = 0;
-    t->end_tick = 0;
-    
-    /* -- Mark Active -- */
-    t->is_active = true;
+    record_monitor_from_task(
+        t,
+        pcName,
+        pcExec,
+        xCoreID,
+        MAE2EL,
+        delay_weight,
+        energy_weight,
+        xPeriod,
+        WCET);
 
     // Increment global counter if we appended
     if (slotIndex >= numMonitoredTasks) {
@@ -204,6 +258,10 @@ int _CreateTaskPinnedToCore_(
     }
 
     eaPort_Mutex_Exit(monitoredTasksMux);
+
+    if (outTaskHandle != NULL) {
+        *outTaskHandle = localTaskHandle;
+    }
 
     return slotIndex;
 }
@@ -252,6 +310,10 @@ int CreateEATaskPinnedToCore(
         return -1;
     }
     memset(edgeRuntime, 0, sizeof(*edgeRuntime));
+    if (HostName != NULL) {
+        snprintf(edgeRuntime->host_name, sizeof(edgeRuntime->host_name), "%s", HostName);
+    }
+    edgeRuntime->role = EDGE_TASK_PAIR_LOCAL;
 
     /* 2. Queue Creation using Wrapper */
     edgeRuntime->queue_client_server = eaPort_Queue_Create(resolvedSpec->queue_depth, resolvedSpec->message_size);
@@ -272,6 +334,10 @@ int CreateEATaskPinnedToCore(
         snprintf(clientBaseName, sizeof(clientBaseName), "%s-cl-%i", TaskName, actualCore);
         snprintf(serverBaseName, sizeof(serverBaseName), "%s-sv-%i", TaskName, actualCore);
 
+        snprintf(edgeRuntime->client_name, sizeof(edgeRuntime->client_name), "%s", clientBaseName);
+        snprintf(edgeRuntime->server_name, sizeof(edgeRuntime->server_name), "%s", serverBaseName);
+        edgeRuntime->role = EDGE_TASK_PAIR_CLIENT;
+
         printf("Creation: Creating Edge Task: %s.\n", TaskName);
 
         /* --- A. Create Client Task --- */
@@ -290,6 +356,7 @@ int CreateEATaskPinnedToCore(
             HostName, 
             serverBaseName, // Relation
             DefaultExecutionSite,
+            &edgeRuntime->HandlerClient,
             xPeriod,
             WCET_c
         );
@@ -299,8 +366,6 @@ int CreateEATaskPinnedToCore(
             goto error_cleanup;
         }
 
-        //If no error in client task, store its handler
-        edgeRuntime->HandlerClient = monitoredTasks[task_index].task_handler;
         /*If edge task is connected to Local as defalt*/
         //TODO: We should always create the task any how if it is enhanced, just suspend it 
         // after creatin if DefaultExecutionSite != LOCAL_EXECUTION
@@ -324,6 +389,7 @@ int CreateEATaskPinnedToCore(
                 HostName, 
                 clientBaseName, // Relation
                 DefaultExecutionSite, 
+                &edgeRuntime->HandlerServer,
                 xPeriod,
                 WCET_s
             );
@@ -335,9 +401,6 @@ int CreateEATaskPinnedToCore(
                 goto error_cleanup;
             }
 
-            /* Retrieve Handle Safely */
-
-            edgeRuntime->HandlerServer = monitoredTasks[task_index].task_handler;
         }
     }
     /* 4. Handle Local Tasks */
@@ -345,6 +408,10 @@ int CreateEATaskPinnedToCore(
     {
         char localBaseName[CONFIG_EA_MAX_TASK_NAME_LEN];
         snprintf(localBaseName, sizeof(localBaseName), "%s-lc-%i", TaskName, actualCore);
+
+        snprintf(edgeRuntime->client_name, sizeof(edgeRuntime->client_name), "%s", localBaseName);
+        edgeRuntime->server_name[0] = '\0';
+        edgeRuntime->role = EDGE_TASK_PAIR_LOCAL;
 
         task_index = _CreateTaskPinnedToCore_(
             TaskCodeClient, 
@@ -361,6 +428,7 @@ int CreateEATaskPinnedToCore(
             "0.0.0.0", 
             "None", 
             LOCAL_EXECUTION, 
+            &edgeRuntime->HandlerClient,
             xPeriod,
             WCET_c
         );
@@ -370,8 +438,6 @@ int CreateEATaskPinnedToCore(
             goto error_cleanup;
         }
 
-        /* Retrieve Handle Safely */
-        edgeRuntime->HandlerClient = monitoredTasks[task_index].task_handler;
     }
 
     return 0; // Success
@@ -384,22 +450,4 @@ error_cleanup:
         eaPort_Free(edgeRuntime);
     }
     return -1;
-}
-
-
-// Helper function to compute the greatest common divisor
-static uint32_t gcd(uint32_t a, uint32_t b) {
-    while (b != 0) {
-        uint32_t t = b;
-        b = a % b;
-        a = t;
-    }
-    return a;
-}
-
-
-// Helper function to compute the least common multiple
-static uint32_t lcm(uint32_t a, uint32_t b) {
-    if (a == 0 || b == 0) return 0;
-    return (a / gcd(a, b)) * b;
 }

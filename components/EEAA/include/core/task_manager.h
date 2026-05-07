@@ -116,33 +116,21 @@ typedef struct {
 // } edge_task_monitor_t;
 
 typedef struct {
-    
-    eaPort_task_t   task_handler;
-    eaPort_task_t   relation_handler;
-    char            name[CONFIG_EA_MAX_TASK_NAME_LEN]; // Needed for unique IDs
-    const char*     host;          // Store pointer, not copy (Save ~28 bytes)
-    const char*     relation;      // Store pointer, not copy
-    
-    uint32_t        cpu_cycles;
-    uint32_t        data_size;
-    uint32_t        start_tick;
-    uint32_t        end_tick;
-    uint32_t        period;
-    unsigned        OE2EL;
-    unsigned        MAE2EL;
-    unsigned        WCET;
-
-    
-
+    char                    name[CONFIG_EA_MAX_TASK_NAME_LEN];
+    uint32_t                cpu_cycles;
+    uint32_t                data_size;
+    uint32_t                start_tick;
+    uint32_t                end_tick;
+    uint32_t                period;
+    unsigned                OE2EL;
+    unsigned                MAE2EL;
+    unsigned                WCET;
     volatile edge_task_signal_t signal_request;
-    edge_task_type_t           type;
-    edge_task_segment_t        segment;
     edge_task_execution_site_t exec_site;
-    uint8_t                    delay_weight;
-    uint8_t                    energy_weight;
-    uint8_t                    core;
-    bool                       is_active;
-    
+    uint8_t                 delay_weight;
+    uint8_t                 energy_weight;
+    uint8_t                 core;
+    bool                    is_active;
 } edge_task_monitor_t;
 
 
@@ -150,13 +138,12 @@ typedef struct {
  * @brief Structure for taking a snapshot of a task's state.
  */
 typedef struct {
+    char          name[CONFIG_EA_MAX_TASK_NAME_LEN];
     uint32_t      cpu_cycles;
     uint32_t      period;
     unsigned      WCET;
     unsigned      OE2EL;
-    const char* host;
-    eaPort_task_t handle;
-    bool          valid; // Flag to tell caller if snapshot was successful
+    bool          valid;
 } task_snapshot_t;
 
 
@@ -174,14 +161,18 @@ typedef struct {
 
 
 /**
- * @brief Runtime state shared by the paired client/server tasks.
+ * @brief Opaque runtime state shared by the paired client/server tasks.
+ *
+ * Use the accessor helpers below instead of reaching into the structure
+ * directly. This keeps the task runtime separate from monitoring metadata.
  */
-typedef struct {
-  eaPort_queue_t queue_client_server;
-  eaPort_queue_t queue_server_client;
-  eaPort_task_t  HandlerServer;
-  eaPort_task_t  HandlerClient;
-} edge_task_pair_runtime_t;
+typedef struct edge_task_pair_runtime edge_task_pair_runtime_t;
+
+typedef enum {
+  EDGE_TASK_PAIR_CLIENT = 0,
+  EDGE_TASK_PAIR_SERVER = 1,
+  EDGE_TASK_PAIR_LOCAL  = 2,
+} edge_task_pair_role_t;
 
 
 /*===========================================================================*/
@@ -215,6 +206,7 @@ int _CreateTaskPinnedToCore_(
     const char *const pcHost, 
     const char *const pcRelation, 
     edge_task_execution_site_t pcExec,
+    eaPort_task_t *outTaskHandle,
     uint32_t xPeriod,
     unsigned WCET
 );
@@ -247,6 +239,22 @@ bool get_task_snapshot(const char* taskName, task_snapshot_t* out_snapshot);
 
 size_t get_num_monitored_tasks(void);
 
+eaPort_queue_t edge_task_pair_queue_client_to_server(const edge_task_pair_runtime_t *runtime);
+
+eaPort_queue_t edge_task_pair_queue_server_to_client(const edge_task_pair_runtime_t *runtime);
+
+eaPort_task_t edge_task_pair_client_handle(const edge_task_pair_runtime_t *runtime);
+
+eaPort_task_t edge_task_pair_server_handle(const edge_task_pair_runtime_t *runtime);
+
+const char *edge_task_pair_client_name(const edge_task_pair_runtime_t *runtime);
+
+const char *edge_task_pair_server_name(const edge_task_pair_runtime_t *runtime);
+
+const char *edge_task_pair_host_name(const edge_task_pair_runtime_t *runtime);
+
+edge_task_pair_role_t edge_task_pair_role(const edge_task_pair_runtime_t *runtime);
+
 
 int get_task_index(const char *taskName);
 
@@ -255,8 +263,6 @@ int get_task_signal(int taskIndex);
 
 
 const char* get_task_ex_site(const char *taskName);
-
-eaPort_task_t get_task_handler(const char *taskName);
 
 uint32_t get_task_cpu_cycles(int taskIndex);
 

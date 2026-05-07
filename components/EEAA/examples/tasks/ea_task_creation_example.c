@@ -18,8 +18,10 @@ static void task_sensor_client(void *pvParameters)
 {
     edge_task_pair_runtime_t *runtime = (edge_task_pair_runtime_t *)pvParameters;
     int sensor_data = 0;
+    eaPort_queue_t out_queue = edge_task_pair_queue_client_to_server(runtime);
+    eaPort_queue_t in_queue = edge_task_pair_queue_server_to_client(runtime);
 
-    if (runtime == NULL) {
+    if (runtime == NULL || out_queue == NULL || in_queue == NULL) {
         printf("[Client] Missing runtime state.\n");
         eaPort_Task_Delete(NULL);
         return;
@@ -32,12 +34,12 @@ static void task_sensor_client(void *pvParameters)
         eaPort_Delay_Milliseconds(500);
 
         printf("[Client] Sending data: %d\n", sensor_data);
-        if (eaPort_Queue_Send(runtime->queue_client_server, &sensor_data, eaPort_NO_WAIT) != eaPort_STATUS_OK) {
+        if (eaPort_Queue_Send(out_queue, &sensor_data, eaPort_NO_WAIT) != eaPort_STATUS_OK) {
             printf("[Client] Queue full!\n");
         }
 
         int received_data = 0;
-        if (eaPort_Queue_Receive(runtime->queue_server_client, &received_data, eaPort_WAIT_FOREVER) == eaPort_STATUS_OK) {
+        if (eaPort_Queue_Receive(in_queue, &received_data, eaPort_WAIT_FOREVER) == eaPort_STATUS_OK) {
             printf("[Client] Processed data from server: %d\n", received_data);
             eaPort_Delay_Milliseconds(100);
         }
@@ -49,8 +51,10 @@ static void task_processor_server(void *pvParameters)
     edge_task_pair_runtime_t *runtime = (edge_task_pair_runtime_t *)pvParameters;
     int received_data = 0;
     const int server_data = 1000;
+    eaPort_queue_t in_queue = edge_task_pair_queue_client_to_server(runtime);
+    eaPort_queue_t out_queue = edge_task_pair_queue_server_to_client(runtime);
 
-    if (runtime == NULL) {
+    if (runtime == NULL || in_queue == NULL || out_queue == NULL) {
         printf("[Server] Missing runtime state.\n");
         eaPort_Task_Delete(NULL);
         return;
@@ -59,13 +63,13 @@ static void task_processor_server(void *pvParameters)
     printf("[Server] Started.\n");
 
     while (1) {
-        if (eaPort_Queue_Receive(runtime->queue_client_server, &received_data, eaPort_WAIT_FOREVER) == eaPort_STATUS_OK) {
+        if (eaPort_Queue_Receive(in_queue, &received_data, eaPort_WAIT_FOREVER) == eaPort_STATUS_OK) {
             printf("[Server] Processed data: %d\n", received_data);
             eaPort_Delay_Milliseconds(100);
         }
 
         printf("[Server] Sending data: %d\n", server_data);
-        if (eaPort_Queue_Send(runtime->queue_server_client, &server_data, eaPort_NO_WAIT) != eaPort_STATUS_OK) {
+        if (eaPort_Queue_Send(out_queue, &server_data, eaPort_NO_WAIT) != eaPort_STATUS_OK) {
             printf("[Server] Queue full!\n");
         }
     }
