@@ -1,53 +1,101 @@
 # Edge-aware Tasks RTOS
 
-ESP32 / ESP-IDF project for edge-aware task management and RTOS abstraction.
+Edge-aware Tasks RTOS is an ESP32 / ESP-IDF project for modeling, creating, and observing task pairs with a portable RTOS abstraction layer.
 
-## What this repo is
+It is centered on the `EEAA` component, which wraps FreeRTOS primitives behind a stable interface and adds task metadata, monitoring helpers, and client/server orchestration utilities.
 
-This repository contains the `EEAA` component, which provides:
-- a portable RTOS abstraction layer
-- task creation and task-monitoring helpers
-- queue, mutex, delay, and suspend/resume wrappers
-- example flows for task creation and RTOS usage
+## What it provides
 
-## Project layout
+- **Portable RTOS abstraction** for tasks, queues, mutexes, delays, and suspend/resume flows
+- **Edge-task modeling** for local, enriched, and remote execution styles
+- **Task monitoring metadata** for host, relation, core, period, WCET, latency, and runtime tracking
+- **Client/server task pairing** with queue-based message exchange
+- **Reusable examples** showing task creation, scheduling, synchronization, and memory management
 
-- `components/EEAA/include/` - public headers
-- `components/EEAA/src/` - implementation
-- `components/EEAA/examples/` - runnable examples
-- `src/main.c` - app entrypoint (currently minimal)
+## How it works
 
-## Main ideas
+The project builds a thin abstraction on top of FreeRTOS:
 
-The code is organized around edge-aware tasks that can be:
-- local
-- enriched
-- remote
+- `port/port_interface_types.h` defines RTOS-agnostic handles and status codes.
+- `port/port_rtos_freertos.c` maps those abstractions to native FreeRTOS APIs.
+- `core/task_manager.c` creates and tracks edge-aware task pairs, including queues and per-task metadata.
+- `examples/` demonstrates how to use the layer in real flows.
 
-The task manager keeps track of task metadata such as name, host, relation, execution site, period, WCET, and other monitoring fields.
+The main task model uses two cooperating roles:
 
-## Build target
+- **Client**: performs local work, sends a request, then waits.
+- **Server**: receives the request, processes it, and replies.
 
-- Board: `nodemcu-32s`
-- Framework: `espidf`
-- Platform: `espressif32`
+That structure makes the repo useful for studying edge-oriented workloads, deadline-aware task design, and RTOS coordination patterns.
 
-## Build / flash / monitor
+## Repository layout
+
+- `components/EEAA/include/` — public headers
+- `components/EEAA/src/` — component implementation
+- `components/EEAA/examples/` — runnable usage examples
+- `src/main.c` — application entrypoint
+- `platformio.ini` — PlatformIO environment configuration
+
+## Supported target
+
+- **Board:** `nodemcu-32s`
+- **Framework:** `espidf`
+- **Platform:** `espressif32`
+
+## Getting started
+
+### Build
 
 ```bash
 pio run -d . -e nodemcu-32s
+```
+
+### Flash
+
+```bash
 pio run -d . -e nodemcu-32s -t upload
+```
+
+### Monitor
+
+```bash
 pio device monitor -p /dev/ttyUSB0 -b 115200
 ```
 
-## Examples
+## Example entry points
 
-Useful example entry points:
-- `components/EEAA/examples/tasks/ea_task_creation_example.c`
-- `components/EEAA/examples/port/port_rtos_example.c`
-- `components/EEAA/examples/port/port_board_example.c`
+- `components/EEAA/examples/tasks/ea_task_creation_example.c` — dynamic edge-task pair creation
+- `components/EEAA/examples/port/port_rtos_example.c` — RTOS abstraction demos
+- `components/EEAA/examples/port/port_board_example.c` — board abstraction demo
 
-## Notes
+## Working with the task manager
 
-- `src/main.c` is currently empty, so the repo behaves more like a component library + examples than a finished app.
-- The repo would benefit from a fuller architecture doc, task flow diagram, and a short usage guide for the task manager APIs.
+The task manager provides helpers for:
+
+- creating task pairs with shared communication queues
+- recording task identity and relationship metadata
+- capturing task snapshots for monitoring and analysis
+- using a consistent naming and execution-site model across tasks
+
+## Contributing
+
+Contributions are welcome.
+
+### Suggested workflow
+
+1. Open an issue for a bug, idea, or documentation gap.
+2. Create a focused branch.
+3. Keep changes small and reviewable.
+4. Update code and docs together when behavior changes.
+5. Verify builds before opening a pull request.
+
+### Coding standards
+
+- Prefer clear, explicit task and component names.
+- Keep abstractions small and readable.
+- Avoid introducing API changes without updating examples and docs.
+- Preserve the RTOS-agnostic boundaries between `port/`, `core/`, and `examples/`.
+
+## License
+
+See `LICENSE` for licensing details.
