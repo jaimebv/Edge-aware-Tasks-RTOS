@@ -15,11 +15,18 @@ struct edge_task_pair_runtime {
     uint32_t       pair_id;
     int32_t        client_index;
     int32_t        server_index;
+    uint8_t        lifecycle_state;
     char           client_name[CONFIG_EA_MAX_TASK_NAME_LEN];
     char           server_name[CONFIG_EA_MAX_TASK_NAME_LEN];
     char           host_name[CONFIG_EA_MAX_TASK_NAME_LEN];
     edge_task_pair_role_t role;
 };
+
+typedef enum {
+    EDGE_RUNTIME_READY = 0,
+    EDGE_RUNTIME_CLEANING = 1,
+    EDGE_RUNTIME_RETIRED = 2,
+} edge_runtime_lifecycle_t;
 
 #define EDGE_TASK_RUNTIME_CHUNK_SIZE 4U
 
@@ -38,6 +45,9 @@ static edge_task_runtime_chunk_t *runtimeChunks = NULL;
 static edge_task_runtime_slot_t *runtimeFreeList = NULL;
 static eaPort_mutex_t runtimeRegistryMux = eaPort_MUTEX_INIT;
 
+static void runtime_registry_init(void);
+static bool runtime_registry_expand(void);
+
 
 
 static edge_task_monitor_hot_t monitoredTaskHot[CONFIG_EA_MAX_TASKS];
@@ -45,6 +55,71 @@ static edge_task_monitor_cold_t monitoredTaskCold[CONFIG_EA_MAX_TASKS];
 size_t numMonitoredTasks = 0;
 static eaPort_mutex_t monitoredTasksMux = eaPort_MUTEX_INIT;
 static uint32_t nextPairId = 1U;
+
+static edge_task_runtime_slot_t *runtime_slot_from_runtime(const edge_task_pair_runtime_t *runtime)
+{
+    if (runtime == NULL) {
+        return NULL;
+    }
+
+    return (edge_task_runtime_slot_t *)((uint8_t *)runtime - offsetof(edge_task_runtime_slot_t, runtime));
+}
+
+static edge_task_pair_runtime_t *runtime_from_task_index(int taskIndex)
+{
+    if (taskIndex < 0) {
+        return NULL;
+    }
+
+    runtime_registry_init();
+    eaPort_Mutex_Enter(runtimeRegistryMux);
+    for (edge_task_runtime_chunk_t *chunk = runtimeChunks; chunk != NULL; chunk = chunk->next) {
+        for (size_t i = 0; i < EDGE_TASK_RUNTIME_CHUNK_SIZE; ++i) {
+            edge_task_runtime_slot_t *slot = &chunk->slots[i];
+            if (!slot->in_use) {
+                continue;
+            }
+
+            if (slot->runtime.client_index == taskIndex || slot->runtime.server_index == taskIndex) {
+                eaPort_Mutex_Exit(runtimeRegistryMux);
+                return &slot->runtime;
+            }
+        }
+    }
+    eaPort_Mutex_Exit(runtimeRegistryMux);
+    return NULL;
+}
+
+static void runtime_mark_retired(edge_task_pair_runtime_t *runtime)
+{
+    edge_task_runtime_slot_t *slot = runtime_slot_from_runtime(runtime);
+    if (slot == NULL) {
+        return;
+    }
+
+    runtime_registry_init();
+    eaPort_Mutex_Enter(runtimeRegistryMux);
+    if (slot->in_use) {
+        slot->runtime.lifecycle_state = EDGE_RUNTIME_RETIRED;
+    }
+    eaPort_Mutex_Exit(runtimeRegistryMux);
+}
+
+static void cleanup_queue_handle(eaPort_queue_t *queue)
+{
+    if (queue != NULL && *queue != NULL) {
+        eaPort_Queue_Delete(*queue);
+        *queue = NULL;
+    }
+}
+
+static void cleanup_task_handle(eaPort_task_t *handle)
+{
+    if (handle != NULL && *handle != NULL) {
+        eaPort_Task_Delete(*handle);
+        *handle = NULL;
+    }
+}
 
 static void runtime_registry_init(void)
 {
@@ -87,6 +162,7 @@ static edge_task_pair_runtime_t *reserve_pair_runtime(void)
     slot->next_free = NULL;
     slot->in_use = true;
     memset(&slot->runtime, 0, sizeof(slot->runtime));
+    slot->runtime.lifecycle_state = EDGE_RUNTIME_READY;
     eaPort_Mutex_Exit(runtimeRegistryMux);
 
     return &slot->runtime;
@@ -178,10 +254,11 @@ static void clear_monitor_slot(size_t slot_index)
         return;
     }
 
+    bool was_active = monitoredTaskHot[slot_index].is_active;
     memset(&monitoredTaskHot[slot_index], 0, sizeof(monitoredTaskHot[slot_index]));
     memset(&monitoredTaskCold[slot_index], 0, sizeof(monitoredTaskCold[slot_index]));
 
-    while (numMonitoredTasks > 0U && !monitoredTaskHot[numMonitoredTasks - 1U].is_active) {
+    if (was_active && numMonitoredTasks > 0U) {
         --numMonitoredTasks;
     }
 }
@@ -528,6 +605,118 @@ int edge_task_pair_peer_index(const edge_task_pair_runtime_t *runtime)
     return runtime ? runtime->server_index : -1;
 }
 
+static void clear_runtime_monitor_entries(int client_index, int server_index, bool include_server)
+{
+    eaPort_Mutex_Enter(monitoredTasksMux);
+    if (client_index >= 0) {
+        clear_monitor_slot((size_t)client_index);
+    }
+    if (include_server && server_index >= 0) {
+        clear_monitor_slot((size_t)server_index);
+    }
+    eaPort_Mutex_Exit(monitoredTasksMux);
+}
+
+int edge_task_pair_destroy(edge_task_pair_runtime_t *runtime, edge_task_cleanup_mode_t mode)
+{
+    if (runtime == NULL) {
+        return 0;
+    }
+
+    runtime_registry_init();
+
+    eaPort_task_t client_handle = NULL;
+    eaPort_task_t server_handle = NULL;
+    eaPort_task_t current_handle = eaPort_Get_Current_Task_Handle();
+    eaPort_queue_t queue_client_server = NULL;
+    eaPort_queue_t queue_server_client = NULL;
+    int client_index = -1;
+    int server_index = -1;
+    bool full_teardown = false;
+
+    eaPort_Mutex_Enter(runtimeRegistryMux);
+    edge_task_runtime_slot_t *slot = runtime_slot_from_runtime(runtime);
+    if (slot == NULL || !slot->in_use) {
+        eaPort_Mutex_Exit(runtimeRegistryMux);
+        return 1;
+    }
+
+    client_index = slot->runtime.client_index;
+    server_index = slot->runtime.server_index;
+    client_handle = slot->runtime.HandlerClient;
+    server_handle = slot->runtime.HandlerServer;
+    full_teardown = (mode == EDGE_TASK_CLEANUP_PAIR) || (server_handle == NULL && server_index < 0);
+
+    if (slot->runtime.lifecycle_state == EDGE_RUNTIME_CLEANING) {
+        eaPort_Mutex_Exit(runtimeRegistryMux);
+        return 1;
+    }
+
+    if (full_teardown) {
+        queue_client_server = slot->runtime.queue_client_server;
+        queue_server_client = slot->runtime.queue_server_client;
+        slot->runtime.queue_client_server = NULL;
+        slot->runtime.queue_server_client = NULL;
+        slot->runtime.HandlerClient = NULL;
+        slot->runtime.HandlerServer = NULL;
+        slot->runtime.client_index = -1;
+        slot->runtime.server_index = -1;
+        slot->runtime.lifecycle_state = EDGE_RUNTIME_CLEANING;
+    } else {
+        slot->runtime.HandlerClient = NULL;
+        slot->runtime.client_index = -1;
+    }
+
+    eaPort_Mutex_Exit(runtimeRegistryMux);
+
+    if (client_handle != NULL && client_handle != current_handle) {
+        cleanup_task_handle(&client_handle);
+    }
+    if (full_teardown) {
+        if (server_handle != NULL && server_handle != current_handle) {
+            cleanup_task_handle(&server_handle);
+        }
+        cleanup_queue_handle(&queue_client_server);
+        cleanup_queue_handle(&queue_server_client);
+        clear_runtime_monitor_entries(client_index, server_index, true);
+        runtime_mark_retired(runtime);
+        release_pair_runtime_impl(runtime);
+        if (client_handle != NULL && client_handle == current_handle) {
+            eaPort_Task_Delete(client_handle);
+        }
+        if (server_handle != NULL && server_handle == current_handle) {
+            eaPort_Task_Delete(server_handle);
+        }
+    } else {
+        clear_runtime_monitor_entries(client_index, -1, false);
+        if (client_handle != NULL && client_handle == current_handle) {
+            eaPort_Task_Delete(client_handle);
+        }
+    }
+
+    return 1;
+}
+
+int edge_task_pair_destroy_by_task_index(int taskIndex, edge_task_cleanup_mode_t mode)
+{
+    edge_task_pair_runtime_t *runtime = runtime_from_task_index(taskIndex);
+    if (runtime == NULL) {
+        return 1;
+    }
+
+    return edge_task_pair_destroy(runtime, mode);
+}
+
+int edge_task_pair_destroy_by_name(const char *taskName, edge_task_cleanup_mode_t mode)
+{
+    int taskIndex = find_task_index(taskName);
+    if (taskIndex < 0) {
+        return 1;
+    }
+
+    return edge_task_pair_destroy_by_task_index(taskIndex, mode);
+}
+
 
 int _CreateTaskPinnedToCore_(
     eaPort_task_function_t pxTaskCode, 
@@ -557,13 +746,11 @@ int _CreateTaskPinnedToCore_(
     int slotIndex = -1;
     
     eaPort_Mutex_Enter(monitoredTasksMux);
-    if (numMonitoredTasks < CONFIG_EA_MAX_TASKS) {
-        for (int i = 0; i < CONFIG_EA_MAX_TASKS; i++) {
-            // Find first empty slot (inactive)
-            if (!monitoredTaskHot[i].is_active) {
-                slotIndex = i;
-                break;
-            }
+    for (int i = 0; i < CONFIG_EA_MAX_TASKS; i++) {
+        // Find first empty slot (inactive)
+        if (!monitoredTaskHot[i].is_active) {
+            slotIndex = i;
+            break;
         }
     }
     eaPort_Mutex_Exit(monitoredTasksMux);
@@ -610,6 +797,8 @@ int _CreateTaskPinnedToCore_(
         return -1; 
     }
 
+    bool was_active = monitoredTaskHot[slotIndex].is_active;
+
     record_monitor_from_task(
         &monitoredTaskHot[slotIndex],
         &monitoredTaskCold[slotIndex],
@@ -628,9 +817,9 @@ int _CreateTaskPinnedToCore_(
         xPeriod,
         WCET);
 
-    // Increment global counter if we appended
-    if (slotIndex >= numMonitoredTasks) {
-        numMonitoredTasks = slotIndex + 1;
+    // Keep the counter as an active-count, not a highest-index watermark.
+    if (!was_active) {
+        ++numMonitoredTasks;
     }
 
     eaPort_Mutex_Exit(monitoredTasksMux);
@@ -777,7 +966,7 @@ int CreateEATaskPinnedToCore(
             if (task_index < 0) {
                 printf("Error: Server task creation failed.\n");
                 // Need to clean up the client task created in step A
-                eaPort_Task_Delete(edgeRuntime->HandlerClient);
+                cleanup_task_handle(&edgeRuntime->HandlerClient);
                 clear_monitor_slot((size_t)edgeRuntime->client_index);
                 goto error_cleanup;
             }
@@ -831,8 +1020,8 @@ int CreateEATaskPinnedToCore(
 /* 5. Centralized Error Handling */
 error_cleanup:
     if (edgeRuntime) {
-        if (edgeRuntime->queue_client_server) eaPort_Queue_Delete(edgeRuntime->queue_client_server);
-        if (edgeRuntime->queue_server_client) eaPort_Queue_Delete(edgeRuntime->queue_server_client);
+        cleanup_queue_handle(&edgeRuntime->queue_client_server);
+        cleanup_queue_handle(&edgeRuntime->queue_server_client);
         release_pair_runtime_impl(edgeRuntime);
     }
     return -1;

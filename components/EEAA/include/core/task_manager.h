@@ -162,6 +162,11 @@ typedef enum {
   EDGE_TASK_PAIR_LOCAL  = 2,
 } edge_task_pair_role_t;
 
+typedef enum {
+  EDGE_TASK_CLEANUP_CLIENT_ONLY = 0,
+  EDGE_TASK_CLEANUP_PAIR        = 1,
+} edge_task_cleanup_mode_t;
+
 
 /*===========================================================================*/
 /* EXTERNAL VARIABLES                                                        */
@@ -252,6 +257,19 @@ int edge_task_pair_task_index(const edge_task_pair_runtime_t *runtime);
 int edge_task_pair_peer_index(const edge_task_pair_runtime_t *runtime);
 
 void edge_task_pair_runtime_release(edge_task_pair_runtime_t *runtime);
+
+/**
+ * @brief Tear down a task runtime in a portable way.
+ *
+ * EDGE_TASK_CLEANUP_CLIENT_ONLY removes the client task and its monitor entry.
+ * EDGE_TASK_CLEANUP_PAIR removes both tasks, queues, monitor entries, and
+ * releases the runtime slot back to the framework.
+ */
+int edge_task_pair_destroy(edge_task_pair_runtime_t *runtime, edge_task_cleanup_mode_t mode);
+
+int edge_task_pair_destroy_by_task_index(int taskIndex, edge_task_cleanup_mode_t mode);
+
+int edge_task_pair_destroy_by_name(const char *taskName, edge_task_cleanup_mode_t mode);
 
 
 int get_task_index(const char *taskName);
