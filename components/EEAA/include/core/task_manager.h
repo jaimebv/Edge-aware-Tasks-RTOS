@@ -232,6 +232,8 @@ int CreateEATaskPinnedToCore(
 
 bool get_task_snapshot(const char* taskName, task_snapshot_t* out_snapshot);
 
+bool get_task_snapshot_by_index(int taskIndex, task_snapshot_t* out_snapshot);
+
 size_t get_num_monitored_tasks(void);
 
 eaPort_queue_t edge_task_pair_queue_client_to_server(const edge_task_pair_runtime_t *runtime);
@@ -279,6 +281,8 @@ int get_task_signal(int taskIndex);
 
 
 const char* get_task_ex_site(const char *taskName);
+
+const char* get_task_ex_site_by_index(int taskIndex);
 
 uint32_t get_task_cpu_cycles(int taskIndex);
 
@@ -333,11 +337,15 @@ void update_task_metrics_by_index(
 
 void update_task_metrics_OE2EL(const char *taskName, uint32_t newOE2EL);
 
+void update_task_metrics_OE2EL_by_index(int taskIndex, uint32_t newOE2EL);
+
 
 int find_task_index(const char *taskName);
 
 
 void remove_monitored_task(const char *taskName);
+
+void remove_monitored_task_by_index(int taskIndex);
 
 
 int is_client_task(const char* str);

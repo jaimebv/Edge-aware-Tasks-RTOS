@@ -288,6 +288,37 @@ static void ensure_initialized(void) {
 }
 
 
+static bool get_task_snapshot_locked(int taskIndex, task_snapshot_t* out_snapshot)
+{
+    if (out_snapshot == NULL || !monitor_index_valid(taskIndex)) {
+        return false;
+    }
+
+    strncpy(out_snapshot->name, monitoredTaskCold[taskIndex].name, CONFIG_EA_MAX_TASK_NAME_LEN - 1);
+    out_snapshot->name[CONFIG_EA_MAX_TASK_NAME_LEN - 1] = '\0';
+    out_snapshot->cpu_cycles = monitoredTaskHot[taskIndex].cpu_cycles;
+    out_snapshot->period     = monitoredTaskCold[taskIndex].period;
+    out_snapshot->WCET       = monitoredTaskCold[taskIndex].WCET;
+    out_snapshot->OE2EL      = monitoredTaskHot[taskIndex].OE2EL;
+    out_snapshot->valid      = true;
+    return true;
+}
+
+bool get_task_snapshot_by_index(int taskIndex, task_snapshot_t* out_snapshot)
+{
+    ensure_initialized();
+    if (out_snapshot == NULL) {
+        return false;
+    }
+
+    memset(out_snapshot, 0, sizeof(*out_snapshot));
+
+    eaPort_Mutex_Enter(monitoredTasksMux);
+    bool found = get_task_snapshot_locked(taskIndex, out_snapshot);
+    eaPort_Mutex_Exit(monitoredTasksMux);
+    return found;
+}
+
 bool get_task_snapshot(const char* taskName, task_snapshot_t* out_snapshot)
 {
     if (taskName == NULL || out_snapshot == NULL) return false;
@@ -371,6 +402,19 @@ int get_task_signal(int taskIndex)
     int signal = (int)monitoredTaskHot[taskIndex].signal_request;
     eaPort_Mutex_Exit(monitoredTasksMux);
     return signal;
+}
+
+const char* get_task_ex_site_by_index(int taskIndex)
+{
+    ensure_initialized();
+    if (!monitor_index_valid(taskIndex)) {
+        return "UNKNOWN";
+    }
+
+    eaPort_Mutex_Enter(monitoredTasksMux);
+    const char *site = execution_site_to_string(monitoredTaskCold[taskIndex].exec_site);
+    eaPort_Mutex_Exit(monitoredTasksMux);
+    return site;
 }
 
 const char* get_task_ex_site(const char *taskName)
@@ -513,6 +557,18 @@ void update_task_metrics_OE2EL(const char *taskName, uint32_t newOE2EL)
     }
 }
 
+void update_task_metrics_OE2EL_by_index(int taskIndex, uint32_t newOE2EL)
+{
+    ensure_initialized();
+    if (!monitor_index_valid(taskIndex)) {
+        return;
+    }
+
+    eaPort_Mutex_Enter(monitoredTasksMux);
+    monitoredTaskHot[taskIndex].OE2EL = newOE2EL;
+    eaPort_Mutex_Exit(monitoredTasksMux);
+}
+
 int find_task_index(const char *taskName)
 {
     ensure_initialized();
@@ -537,6 +593,16 @@ void remove_monitored_task(const char *taskName)
     if (taskIndex >= 0) {
         clear_monitor_slot((size_t)taskIndex);
     }
+}
+
+void remove_monitored_task_by_index(int taskIndex)
+{
+    ensure_initialized();
+    if (!monitor_index_valid(taskIndex)) {
+        return;
+    }
+
+    clear_monitor_slot((size_t)taskIndex);
 }
 
 int is_client_task(const char* str)
