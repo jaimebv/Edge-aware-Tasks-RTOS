@@ -287,6 +287,8 @@ static void ensure_initialized(void) {
     }
 }
 
+static bool monitor_index_valid(int taskIndex);
+
 
 static bool get_task_snapshot_locked(int taskIndex, task_snapshot_t* out_snapshot)
 {
