@@ -79,7 +79,7 @@ The task manager provides helpers for:
 
 ## Contributing
 
-Contributions are welcome.
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
 ### Suggested workflow
 
