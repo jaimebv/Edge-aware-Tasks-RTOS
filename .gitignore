@@ -2,4 +2,4 @@
 .vscode/*
 secrets.h
 include/templates.h
-
+src/test/*
