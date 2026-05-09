@@ -323,34 +323,7 @@ bool get_task_snapshot(const char* taskName, task_snapshot_t* out_snapshot)
 {
     if (taskName == NULL || out_snapshot == NULL) return false;
 
-    ensure_initialized();
-    bool found = false;
-    memset(out_snapshot, 0, sizeof(*out_snapshot));
-
-    eaPort_Mutex_Enter(monitoredTasksMux);
-    
-    /* 1. Perform lookup INSIDE the lock */
-    for (size_t i = 0; i < CONFIG_EA_MAX_TASKS; i++) {
-        if (monitoredTaskHot[i].is_active && 
-            strncmp(monitoredTaskCold[i].name, taskName, CONFIG_EA_MAX_TASK_NAME_LEN) == 0) {
-            
-            /* 2. Atomic Copy */
-            strncpy(out_snapshot->name, monitoredTaskCold[i].name, CONFIG_EA_MAX_TASK_NAME_LEN - 1);
-            out_snapshot->name[CONFIG_EA_MAX_TASK_NAME_LEN - 1] = '\0';
-            out_snapshot->cpu_cycles = monitoredTaskHot[i].cpu_cycles;
-            out_snapshot->period     = monitoredTaskCold[i].period;
-            out_snapshot->WCET       = monitoredTaskCold[i].WCET;
-            out_snapshot->OE2EL      = monitoredTaskHot[i].OE2EL;
-            out_snapshot->valid      = true;
-            
-            found = true;
-            break;
-        }
-    }
-    
-    eaPort_Mutex_Exit(monitoredTasksMux);
-    
-    return found;
+    return get_task_snapshot_by_index(find_task_index(taskName), out_snapshot);
 }
 
 size_t get_num_monitored_tasks(void)
@@ -424,16 +397,7 @@ const char* get_task_ex_site(const char *taskName)
         return "UNKNOWN";
     }
 
-    eaPort_Mutex_Enter(monitoredTasksMux);
-    const char *site = "UNKNOWN";
-    for (size_t i = 0; i < CONFIG_EA_MAX_TASKS; ++i) {
-        if (monitoredTaskHot[i].is_active && strncmp(monitoredTaskCold[i].name, taskName, CONFIG_EA_MAX_TASK_NAME_LEN) == 0) {
-            site = execution_site_to_string(monitoredTaskCold[i].exec_site);
-            break;
-        }
-    }
-    eaPort_Mutex_Exit(monitoredTasksMux);
-    return site;
+    return get_task_ex_site_by_index(find_task_index(taskName));
 }
 
 uint32_t get_task_cpu_cycles(int taskIndex)
@@ -551,10 +515,7 @@ void update_task_metrics_by_index(int taskIndex, uint32_t newOE2EL, uint32_t new
 
 void update_task_metrics_OE2EL(const char *taskName, uint32_t newOE2EL)
 {
-    int taskIndex = find_task_index(taskName);
-    if (taskIndex >= 0) {
-        update_task_metrics_by_index(taskIndex, newOE2EL, monitoredTaskHot[taskIndex].cpu_cycles, monitoredTaskHot[taskIndex].start_tick, monitoredTaskHot[taskIndex].end_tick, monitoredTaskHot[taskIndex].data_size);
-    }
+    update_task_metrics_OE2EL_by_index(find_task_index(taskName), newOE2EL);
 }
 
 void update_task_metrics_OE2EL_by_index(int taskIndex, uint32_t newOE2EL)
@@ -589,10 +550,7 @@ int find_task_index(const char *taskName)
 
 void remove_monitored_task(const char *taskName)
 {
-    int taskIndex = find_task_index(taskName);
-    if (taskIndex >= 0) {
-        clear_monitor_slot((size_t)taskIndex);
-    }
+    remove_monitored_task_by_index(find_task_index(taskName));
 }
 
 void remove_monitored_task_by_index(int taskIndex)
