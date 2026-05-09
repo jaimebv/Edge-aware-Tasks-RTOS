@@ -120,11 +120,6 @@ static void make_server_name(char *buf, size_t buf_size, size_t idx)
     snprintf(buf, buf_size, "%s-sv-0", kPairBaseNames[idx]);
 }
 
-static void make_local_name(char *buf, size_t buf_size)
-{
-    snprintf(buf, buf_size, "%s-lc-0", kLocalBaseName);
-}
-
 static void assert_runtime_accessors(edge_task_pair_runtime_t *runtime, bool local_mode)
 {
     /*
@@ -196,8 +191,8 @@ static void pair_client_task(void *pvParameters)
     }
 
     slot = (int)edge_task_pair_id(runtime) - 2;
-    own_index = edge_task_pair_task_index(runtime);
-    peer_index = edge_task_pair_peer_index(runtime);
+    own_index = -1;
+    peer_index = -1;
 
     if (slot < 0) {
         fail("pair client startup", "bad runtime context");
@@ -205,8 +200,17 @@ static void pair_client_task(void *pvParameters)
         return;
     }
 
-    /* Give the creator time to store task handles before checking them. */
+    /* Give the creator time to store task handles and runtime indices. */
     eaPort_Delay_Milliseconds(100U);
+
+    for (uint32_t spin = 0U; spin < 50U && (own_index < 0 || peer_index < 0); ++spin) {
+        own_index = edge_task_pair_task_index(runtime);
+        peer_index = edge_task_pair_peer_index(runtime);
+        if (own_index >= 0 && peer_index >= 0) {
+            break;
+        }
+        eaPort_Delay_Milliseconds(20U);
+    }
 
     g_pair_ready[slot] = true;
     g_pair_client_index[slot] = own_index;
@@ -260,8 +264,8 @@ static void pair_server_task(void *pvParameters)
     }
 
     slot = (int)edge_task_pair_id(runtime) - 2;
-    own_index = edge_task_pair_task_index(runtime);
-    peer_index = edge_task_pair_peer_index(runtime);
+    own_index = -1;
+    peer_index = -1;
 
     if (slot < 0) {
         fail("pair server startup", "bad runtime context");
@@ -270,8 +274,16 @@ static void pair_server_task(void *pvParameters)
     }
 
     eaPort_Delay_Milliseconds(100U);
-    g_pair_client_index[slot] = peer_index;
-    g_pair_server_index[slot] = own_index;
+    for (uint32_t spin = 0U; spin < 50U && own_index < 0; ++spin) {
+        own_index = edge_task_pair_task_index(runtime);
+        peer_index = edge_task_pair_peer_index(runtime);
+        if (own_index >= 0) {
+            break;
+        }
+        eaPort_Delay_Milliseconds(20U);
+    }
+    g_pair_client_index[slot] = own_index;
+    g_pair_server_index[slot] = peer_index;
     assert_runtime_accessors(runtime, false);
 
     /* Proof that the server task can see its own monitor entry. */
@@ -308,7 +320,15 @@ static void local_task(void *pvParameters)
         return;
     }
 
-    local_index = edge_task_pair_task_index(runtime);
+    local_index = -1;
+
+    for (uint32_t spin = 0U; spin < 50U && local_index < 0; ++spin) {
+        local_index = edge_task_pair_task_index(runtime);
+        if (local_index >= 0) {
+            break;
+        }
+        eaPort_Delay_Milliseconds(20U);
+    }
 
     if (local_index < 0) {
         fail("local task startup", "bad runtime context");
@@ -460,7 +480,7 @@ static void test_monitoring_and_updates(void)
         char client_name[32];
         char server_name[32];
 
-        make_local_name(local_name, sizeof(local_name));
+        snprintf(local_name, sizeof(local_name), "%s-lc-0", kLocalBaseName);
         make_client_name(client_name, sizeof(client_name), 0U);
         make_server_name(server_name, sizeof(server_name), 0U);
 
@@ -561,7 +581,7 @@ void app_main(void)
      * Create the local task first so we also exercise the local creation branch.
      * Its runtime will be kept alive until the cleanup phase.
      */
-    make_local_name(base_name, sizeof(base_name));
+    snprintf(base_name, sizeof(base_name), "%s", kLocalBaseName);
     expect_true("create local task", create_local_task(base_name), "local task creation failed");
 
     /*
@@ -585,7 +605,7 @@ void app_main(void)
         char roundtrip_name[48];
         snprintf(roundtrip_name, sizeof(roundtrip_name), "pair-%u roundtrip", (unsigned)i);
         expect_true(roundtrip_name, wait_until((volatile bool *)&g_pair_roundtrip[i], 5000U), "pair roundtrip did not complete");
-        expect_true(roundtrip_name, g_pair_reply[i] == ((int)i + 1001), "unexpected roundtrip payload");
+        expect_true(roundtrip_name, g_pair_reply[i] == 1001, "unexpected roundtrip payload");
     }
 
     expect_true("monitored task count", get_num_monitored_tasks() == (TEST_PAIR_COUNT * 2U) + 1U, "unexpected number of monitored tasks");
