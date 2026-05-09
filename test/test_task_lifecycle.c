@@ -64,6 +64,20 @@ static volatile bool g_local_ready;
 static volatile int g_local_index;
 static volatile uint32_t g_pass_count;
 static volatile uint32_t g_fail_count;
+static volatile edge_task_creation_failure_reason_t g_forced_creation_failure_reason = EDGE_TASK_CREATION_FAILURE_NONE;
+
+bool edge_task_manager_test_hook_should_fail_creation(
+    edge_task_creation_failure_reason_t reason,
+    const char *task_name)
+{
+    (void)task_name;
+    return reason == g_forced_creation_failure_reason;
+}
+
+static void set_creation_failure_reason(edge_task_creation_failure_reason_t reason)
+{
+    g_forced_creation_failure_reason = reason;
+}
 
 static void reset_runtime_indices(void)
 {
@@ -351,7 +365,7 @@ static void local_task(void *pvParameters)
 
 static bool create_pair_task(const char *base_name, edge_task_type_t app_type, edge_task_execution_site_t site)
 {
-    return CreateEATaskPinnedToCore(
+    edge_task_creation_result_t result = CreateEATaskPinnedToCoreEx(
                base_name,
                TEST_PRIORITY,
                pair_client_task,
@@ -368,12 +382,14 @@ static bool create_pair_task(const char *base_name, edge_task_type_t app_type, e
                "127.0.0.1",
                TEST_PERIOD_MS,
                TEST_CLIENT_WCET,
-               TEST_SERVER_WCET) == 0;
+               TEST_SERVER_WCET);
+
+    return result.failure_reason == EDGE_TASK_CREATION_FAILURE_NONE;
 }
 
 static bool create_local_task(const char *base_name)
 {
-    return CreateEATaskPinnedToCore(
+    edge_task_creation_result_t result = CreateEATaskPinnedToCoreEx(
                base_name,
                TEST_PRIORITY,
                local_task,
@@ -390,7 +406,162 @@ static bool create_local_task(const char *base_name)
                "0.0.0.0",
                TEST_PERIOD_MS,
                TEST_LOCAL_WCET,
-               TEST_LOCAL_WCET) == 0;
+               TEST_LOCAL_WCET);
+
+    return result.failure_reason == EDGE_TASK_CREATION_FAILURE_NONE;
+}
+
+static void test_strong_rollback_semantics(void)
+{
+    const size_t baseline = get_num_monitored_tasks();
+    edge_task_creation_result_t result = {0};
+    int created_index;
+
+    set_creation_failure_reason(EDGE_TASK_CREATION_FAILURE_QUEUE_SERVER);
+    result = CreateEATaskPinnedToCoreEx(
+        "RBQ",
+        TEST_PRIORITY,
+        pair_client_task,
+        pair_server_task,
+        TEST_CLIENT_STACK,
+        TEST_SERVER_STACK,
+        TEST_CORE_ID,
+        ENRICHED,
+        TEST_MAE2EL_MS,
+        TEST_DELAY_SENSITIVITY,
+        TEST_ENERGY_SENSITIVITY,
+        LOCAL_EXECUTION,
+        &kPairSpec,
+        "127.0.0.1",
+        TEST_PERIOD_MS,
+        TEST_CLIENT_WCET,
+        TEST_SERVER_WCET);
+    expect_true("rollback queue failure reason", result.failure_reason == EDGE_TASK_CREATION_FAILURE_QUEUE_SERVER, edge_task_creation_failure_reason_to_string(result.failure_reason));
+    expect_true("rollback queue failure index", result.task_index < 0, "queue failure should not return an index");
+    expect_true("rollback queue monitor cleanup", get_num_monitored_tasks() == baseline, "queue failure leaked monitor state");
+
+    set_creation_failure_reason(EDGE_TASK_CREATION_FAILURE_NONE);
+    result = CreateEATaskPinnedToCoreEx(
+        "RBQ",
+        TEST_PRIORITY,
+        pair_client_task,
+        pair_server_task,
+        TEST_CLIENT_STACK,
+        TEST_SERVER_STACK,
+        TEST_CORE_ID,
+        ENRICHED,
+        TEST_MAE2EL_MS,
+        TEST_DELAY_SENSITIVITY,
+        TEST_ENERGY_SENSITIVITY,
+        LOCAL_EXECUTION,
+        &kPairSpec,
+        "127.0.0.1",
+        TEST_PERIOD_MS,
+        TEST_CLIENT_WCET,
+        TEST_SERVER_WCET);
+    expect_true("rollback queue retry succeeds", result.failure_reason == EDGE_TASK_CREATION_FAILURE_NONE && result.task_index >= 0, "queue retry should succeed");
+    expect_true("rollback queue retry monitor count", get_num_monitored_tasks() == baseline + 2U, "queue retry should add client/server monitors");
+    created_index = result.task_index;
+    expect_true("rollback queue retry destroy", edge_task_pair_destroy_by_task_index(created_index, EDGE_TASK_CLEANUP_PAIR) == 1, "queue retry cleanup failed");
+    expect_true("rollback queue retry cleanup", get_num_monitored_tasks() == baseline, "queue retry cleanup should restore baseline");
+
+    set_creation_failure_reason(EDGE_TASK_CREATION_FAILURE_SERVER_TASK);
+    result = CreateEATaskPinnedToCoreEx(
+        "RBS",
+        TEST_PRIORITY,
+        pair_client_task,
+        pair_server_task,
+        TEST_CLIENT_STACK,
+        TEST_SERVER_STACK,
+        TEST_CORE_ID,
+        ENRICHED,
+        TEST_MAE2EL_MS,
+        TEST_DELAY_SENSITIVITY,
+        TEST_ENERGY_SENSITIVITY,
+        LOCAL_EXECUTION,
+        &kPairSpec,
+        "127.0.0.1",
+        TEST_PERIOD_MS,
+        TEST_CLIENT_WCET,
+        TEST_SERVER_WCET);
+    expect_true("rollback server failure reason", result.failure_reason == EDGE_TASK_CREATION_FAILURE_SERVER_TASK, edge_task_creation_failure_reason_to_string(result.failure_reason));
+    expect_true("rollback server failure index", result.task_index < 0, "server failure should not return an index");
+    expect_true("rollback server monitor cleanup", get_num_monitored_tasks() == baseline, "server failure leaked monitor state");
+
+    set_creation_failure_reason(EDGE_TASK_CREATION_FAILURE_NONE);
+    result = CreateEATaskPinnedToCoreEx(
+        "RBS",
+        TEST_PRIORITY,
+        pair_client_task,
+        pair_server_task,
+        TEST_CLIENT_STACK,
+        TEST_SERVER_STACK,
+        TEST_CORE_ID,
+        ENRICHED,
+        TEST_MAE2EL_MS,
+        TEST_DELAY_SENSITIVITY,
+        TEST_ENERGY_SENSITIVITY,
+        LOCAL_EXECUTION,
+        &kPairSpec,
+        "127.0.0.1",
+        TEST_PERIOD_MS,
+        TEST_CLIENT_WCET,
+        TEST_SERVER_WCET);
+    expect_true("rollback server retry succeeds", result.failure_reason == EDGE_TASK_CREATION_FAILURE_NONE && result.task_index >= 0, "server retry should succeed");
+    expect_true("rollback server retry monitor count", get_num_monitored_tasks() == baseline + 2U, "server retry should add client/server monitors");
+    created_index = result.task_index;
+    expect_true("rollback server retry destroy", edge_task_pair_destroy_by_task_index(created_index, EDGE_TASK_CLEANUP_PAIR) == 1, "server retry cleanup failed");
+    expect_true("rollback server retry cleanup", get_num_monitored_tasks() == baseline, "server retry cleanup should restore baseline");
+
+    set_creation_failure_reason(EDGE_TASK_CREATION_FAILURE_LOCAL_TASK);
+    result = CreateEATaskPinnedToCoreEx(
+        "RBL",
+        TEST_PRIORITY,
+        local_task,
+        local_task,
+        TEST_LOCAL_STACK,
+        TEST_LOCAL_STACK,
+        TEST_CORE_ID,
+        LOCAL,
+        TEST_MAE2EL_MS,
+        TEST_DELAY_SENSITIVITY,
+        TEST_ENERGY_SENSITIVITY,
+        LOCAL_EXECUTION,
+        &kPairSpec,
+        "0.0.0.0",
+        TEST_PERIOD_MS,
+        TEST_LOCAL_WCET,
+        TEST_LOCAL_WCET);
+    expect_true("rollback local failure reason", result.failure_reason == EDGE_TASK_CREATION_FAILURE_LOCAL_TASK, edge_task_creation_failure_reason_to_string(result.failure_reason));
+    expect_true("rollback local failure index", result.task_index < 0, "local failure should not return an index");
+    expect_true("rollback local monitor cleanup", get_num_monitored_tasks() == baseline, "local failure leaked monitor state");
+
+    set_creation_failure_reason(EDGE_TASK_CREATION_FAILURE_NONE);
+    result = CreateEATaskPinnedToCoreEx(
+        "RBL",
+        TEST_PRIORITY,
+        local_task,
+        local_task,
+        TEST_LOCAL_STACK,
+        TEST_LOCAL_STACK,
+        TEST_CORE_ID,
+        LOCAL,
+        TEST_MAE2EL_MS,
+        TEST_DELAY_SENSITIVITY,
+        TEST_ENERGY_SENSITIVITY,
+        LOCAL_EXECUTION,
+        &kPairSpec,
+        "0.0.0.0",
+        TEST_PERIOD_MS,
+        TEST_LOCAL_WCET,
+        TEST_LOCAL_WCET);
+    expect_true("rollback local retry succeeds", result.failure_reason == EDGE_TASK_CREATION_FAILURE_NONE && result.task_index >= 0, "local retry should succeed");
+    expect_true("rollback local retry monitor count", get_num_monitored_tasks() == baseline + 1U, "local retry should add one monitor");
+    created_index = result.task_index;
+    expect_true("rollback local retry destroy", edge_task_pair_destroy_by_task_index(created_index, EDGE_TASK_CLEANUP_CLIENT_ONLY) == 1, "local retry cleanup failed");
+    expect_true("rollback local retry cleanup", get_num_monitored_tasks() == baseline, "local retry cleanup should restore baseline");
+
+    pass("strong rollback semantics");
 }
 
 static void test_invalid_and_null_paths(void)
@@ -575,8 +746,10 @@ void app_main(void)
     printf("=== Task lifecycle test harness ===\n");
     task_manager_init();
     reset_runtime_indices();
+    set_creation_failure_reason(EDGE_TASK_CREATION_FAILURE_NONE);
 
     test_invalid_and_null_paths();
+    test_strong_rollback_semantics();
 
     /*
      * Create the local task first so we also exercise the local creation branch.
