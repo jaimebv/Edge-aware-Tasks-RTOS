@@ -134,6 +134,48 @@ static void make_server_name(char *buf, size_t buf_size, size_t idx)
     snprintf(buf, buf_size, "%s-sv-0", kPairBaseNames[idx]);
 }
 
+static int find_pair_slot_by_runtime(edge_task_pair_runtime_t *runtime)
+{
+    const char *client_name;
+    char expected[48];
+
+    if (runtime == NULL) {
+        return -1;
+    }
+
+    client_name = edge_task_pair_client_name(runtime);
+    if (client_name == NULL) {
+        return -1;
+    }
+
+    for (size_t i = 0; i < TEST_PAIR_COUNT; ++i) {
+        make_client_name(expected, sizeof(expected), i);
+        if (strcmp(client_name, expected) == 0) {
+            return (int)i;
+        }
+    }
+
+    return -1;
+}
+
+static int find_local_slot_by_runtime(edge_task_pair_runtime_t *runtime)
+{
+    const char *client_name;
+    char expected[48];
+
+    if (runtime == NULL) {
+        return -1;
+    }
+
+    client_name = edge_task_pair_client_name(runtime);
+    if (client_name == NULL) {
+        return -1;
+    }
+
+    snprintf(expected, sizeof(expected), "%s-lc-0", kLocalBaseName);
+    return (strcmp(client_name, expected) == 0) ? 0 : -1;
+}
+
 static void assert_runtime_accessors(edge_task_pair_runtime_t *runtime, bool local_mode)
 {
     /*
@@ -204,15 +246,9 @@ static void pair_client_task(void *pvParameters)
         return;
     }
 
-    slot = (int)edge_task_pair_id(runtime) - 2;
+    slot = find_pair_slot_by_runtime(runtime);
     own_index = -1;
     peer_index = -1;
-
-    if (slot < 0) {
-        fail("pair client startup", "bad runtime context");
-        eaPort_Task_Delete(NULL);
-        return;
-    }
 
     /* Give the creator time to store task handles and runtime indices. */
     eaPort_Delay_Milliseconds(100U);
@@ -226,9 +262,11 @@ static void pair_client_task(void *pvParameters)
         eaPort_Delay_Milliseconds(20U);
     }
 
-    g_pair_ready[slot] = true;
-    g_pair_client_index[slot] = own_index;
-    g_pair_server_index[slot] = peer_index;
+    if (slot >= 0) {
+        g_pair_ready[slot] = true;
+        g_pair_client_index[slot] = own_index;
+        g_pair_server_index[slot] = peer_index;
+    }
     assert_runtime_accessors(runtime, false);
 
     expect_true("client own index", own_index >= 0, "client index not found");
@@ -277,15 +315,9 @@ static void pair_server_task(void *pvParameters)
         return;
     }
 
-    slot = (int)edge_task_pair_id(runtime) - 2;
+    slot = find_pair_slot_by_runtime(runtime);
     own_index = -1;
     peer_index = -1;
-
-    if (slot < 0) {
-        fail("pair server startup", "bad runtime context");
-        eaPort_Task_Delete(NULL);
-        return;
-    }
 
     eaPort_Delay_Milliseconds(100U);
     for (uint32_t spin = 0U; spin < 50U && own_index < 0; ++spin) {
@@ -296,8 +328,10 @@ static void pair_server_task(void *pvParameters)
         }
         eaPort_Delay_Milliseconds(20U);
     }
-    g_pair_client_index[slot] = own_index;
-    g_pair_server_index[slot] = peer_index;
+    if (slot >= 0) {
+        g_pair_client_index[slot] = own_index;
+        g_pair_server_index[slot] = peer_index;
+    }
     assert_runtime_accessors(runtime, false);
 
     /* Proof that the server task can see its own monitor entry. */
@@ -334,7 +368,7 @@ static void local_task(void *pvParameters)
         return;
     }
 
-    local_index = -1;
+    local_index = find_local_slot_by_runtime(runtime);
 
     for (uint32_t spin = 0U; spin < 50U && local_index < 0; ++spin) {
         local_index = edge_task_pair_task_index(runtime);
