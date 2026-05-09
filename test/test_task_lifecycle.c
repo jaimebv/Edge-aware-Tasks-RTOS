@@ -1,0 +1,589 @@
+/*
+ * Task lifecycle test harness.
+ *
+ * This file is intentionally verbose and fully commented because it is meant
+ * to exercise the task-manager APIs on real ESP32 hardware, not only compile
+ * them.
+ *
+ * Coverage goals:
+ * - validate null / invalid inputs
+ * - create local and paired edge tasks
+ * - exercise runtime accessor helpers
+ * - force runtime registry expansion with > 4 live pair runtimes
+ * - cover client-only destroy and full pair teardown
+ * - cover destroy-by-name and destroy-by-task-index
+ * - verify monitor snapshots and metric update helpers
+ */
+
+#include <stdio.h>
+#include <string.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <inttypes.h>
+
+#include "core/task_manager.h"
+#include "port/port_rtos.h"
+
+#define TEST_PAIR_COUNT          5U
+#define TEST_QUEUE_DEPTH         1U
+#define TEST_MESSAGE_SIZE        sizeof(int)
+#define TEST_PRIORITY            2U
+#define TEST_CORE_ID             0U
+#define TEST_CLIENT_STACK        2048U
+#define TEST_SERVER_STACK        2048U
+#define TEST_LOCAL_STACK         2048U
+#define TEST_PERIOD_MS           1000U
+#define TEST_CLIENT_WCET         200U
+#define TEST_SERVER_WCET         800U
+#define TEST_LOCAL_WCET          150U
+#define TEST_MAE2EL_MS           1000U
+#define TEST_DELAY_SENSITIVITY   50U
+#define TEST_ENERGY_SENSITIVITY  50U
+
+static const edge_task_pair_spec_t kPairSpec = {
+    .queue_depth = TEST_QUEUE_DEPTH,
+    .message_size = TEST_MESSAGE_SIZE,
+};
+
+static const char *const kPairBaseNames[TEST_PAIR_COUNT] = {
+    "TL0",
+    "TL1",
+    "TL2",
+    "TL3",
+    "TL4",
+};
+
+static const char *const kLocalBaseName = "TLOC";
+
+static volatile bool g_pair_ready[TEST_PAIR_COUNT];
+static volatile bool g_pair_roundtrip[TEST_PAIR_COUNT];
+static volatile int g_pair_reply[TEST_PAIR_COUNT];
+static volatile bool g_local_ready;
+static volatile uint32_t g_pass_count;
+static volatile uint32_t g_fail_count;
+
+static void pass(const char *name)
+{
+    ++g_pass_count;
+    printf("TEST PASSED: %s\n", name);
+}
+
+static void fail(const char *name, const char *detail)
+{
+    ++g_fail_count;
+    printf("TEST FAILED: %s (%s)\n", name, detail ? detail : "no detail");
+}
+
+static bool expect_true(const char *name, bool ok, const char *detail)
+{
+    if (!ok) {
+        fail(name, detail);
+        return false;
+    }
+
+    pass(name);
+    return true;
+}
+
+static bool wait_until(volatile bool *flag, uint32_t timeout_ms)
+{
+    const uint32_t step_ms = 10U;
+    uint32_t waited = 0U;
+
+    while (!*flag && waited < timeout_ms) {
+        eaPort_Delay_Milliseconds(step_ms);
+        waited += step_ms;
+    }
+
+    return *flag;
+}
+
+static void make_client_name(char *buf, size_t buf_size, size_t idx)
+{
+    snprintf(buf, buf_size, "%s-cl-0", kPairBaseNames[idx]);
+}
+
+static void make_server_name(char *buf, size_t buf_size, size_t idx)
+{
+    snprintf(buf, buf_size, "%s-sv-0", kPairBaseNames[idx]);
+}
+
+static void make_local_name(char *buf, size_t buf_size)
+{
+    snprintf(buf, buf_size, "%s-lc-0", kLocalBaseName);
+}
+
+static int pair_index_from_name(const char *task_name, bool server_name)
+{
+    char expected[32];
+
+    if (task_name == NULL) {
+        return -1;
+    }
+
+    for (size_t i = 0; i < TEST_PAIR_COUNT; ++i) {
+        if (server_name) {
+            make_server_name(expected, sizeof(expected), i);
+        } else {
+            make_client_name(expected, sizeof(expected), i);
+        }
+
+        if (strcmp(task_name, expected) == 0) {
+            return (int)i;
+        }
+    }
+
+    return -1;
+}
+
+static int local_index_from_name(const char *task_name)
+{
+    char expected[32];
+    make_local_name(expected, sizeof(expected));
+    return (task_name != NULL && strcmp(task_name, expected) == 0) ? 0 : -1;
+}
+
+static void assert_runtime_accessors(edge_task_pair_runtime_t *runtime, bool local_mode)
+{
+    /*
+     * Check all runtime accessors once from within the task context.
+     * The runtime is shared, so the values should be stable for the pair.
+     */
+    if (runtime == NULL) {
+        fail("runtime accessor coverage", "runtime is NULL");
+        return;
+    }
+
+    const char *client_name = edge_task_pair_client_name(runtime);
+    const char *server_name = edge_task_pair_server_name(runtime);
+    const char *host_name = edge_task_pair_host_name(runtime);
+    eaPort_queue_t c2s = edge_task_pair_queue_client_to_server(runtime);
+    eaPort_queue_t s2c = edge_task_pair_queue_server_to_client(runtime);
+    eaPort_task_t client_handle = edge_task_pair_client_handle(runtime);
+    eaPort_task_t server_handle = edge_task_pair_server_handle(runtime);
+    edge_task_pair_role_t role = edge_task_pair_role(runtime);
+    uint32_t pair_id = edge_task_pair_id(runtime);
+    int task_index = edge_task_pair_task_index(runtime);
+    int peer_index = edge_task_pair_peer_index(runtime);
+
+    /* Task handles may appear a moment after the task starts; retry briefly. */
+    for (uint32_t spin = 0U; spin < 50U && client_handle == NULL; ++spin) {
+        eaPort_Delay_Milliseconds(20U);
+        client_handle = edge_task_pair_client_handle(runtime);
+    }
+    if (!local_mode) {
+        for (uint32_t spin = 0U; spin < 50U && server_handle == NULL; ++spin) {
+            eaPort_Delay_Milliseconds(20U);
+            server_handle = edge_task_pair_server_handle(runtime);
+        }
+    }
+
+    if (local_mode) {
+        expect_true("local runtime role", role == EDGE_TASK_PAIR_LOCAL, "wrong local role");
+    } else {
+        expect_true("pair runtime role", role == EDGE_TASK_PAIR_CLIENT, "wrong pair role");
+    }
+
+    expect_true("runtime client name", client_name != NULL && client_name[0] != '\0', "client name missing");
+    expect_true("runtime host name", host_name != NULL, "host name missing");
+    expect_true("runtime queues", c2s != NULL && s2c != NULL, "runtime queues missing");
+    expect_true("runtime client handle", client_handle != NULL, "client handle missing");
+    expect_true("runtime server handle", local_mode ? true : (server_handle != NULL), "server handle missing");
+    expect_true("runtime pair id", pair_id != 0U, "pair id should be non-zero");
+    expect_true("runtime task index", task_index >= 0, "task index invalid");
+    expect_true("runtime peer index", local_mode ? (peer_index < 0) : (peer_index >= 0), "peer index invalid");
+
+    if (!local_mode) {
+        expect_true("runtime server name", server_name != NULL && server_name[0] != '\0', "server name missing");
+    }
+}
+
+static void pair_client_task(void *pvParameters)
+{
+    edge_task_pair_runtime_t *runtime = (edge_task_pair_runtime_t *)pvParameters;
+    const char *client_name = edge_task_pair_client_name(runtime);
+    int slot = pair_index_from_name(client_name, false);
+    int own_index = -1;
+    int peer_index = -1;
+    int tx = 1000 + (slot >= 0 ? slot : 0);
+    int rx = 0;
+
+    if (runtime == NULL || slot < 0) {
+        fail("pair client startup", "bad runtime context");
+        eaPort_Task_Delete(NULL);
+        return;
+    }
+
+    /* Give the creator time to store task handles before checking them. */
+    eaPort_Delay_Milliseconds(100U);
+
+    g_pair_ready[slot] = true;
+    assert_runtime_accessors(runtime, false);
+
+    own_index = find_task_index(client_name);
+    peer_index = find_task_index(edge_task_pair_server_name(runtime));
+    expect_true("client own index", own_index >= 0, "client index not found");
+    expect_true("client peer index", peer_index >= 0, "server index not found");
+    expect_true("client index accessor", edge_task_pair_task_index(runtime) == own_index, "task index mismatch");
+    expect_true("client peer accessor", edge_task_pair_peer_index(runtime) == peer_index, "peer index mismatch");
+
+    /* Send one message and wait for the reply so the queues are proven live. */
+    if (eaPort_Queue_Send(edge_task_pair_queue_client_to_server(runtime), &tx, eaPort_WAIT_FOREVER) != eaPort_STATUS_OK) {
+        fail("client queue send", "send failed");
+        eaPort_Task_Delete(NULL);
+        return;
+    }
+
+    if (eaPort_Queue_Receive(edge_task_pair_queue_server_to_client(runtime), &rx, eaPort_WAIT_FOREVER) != eaPort_STATUS_OK) {
+        fail("client queue receive", "receive failed");
+        eaPort_Task_Delete(NULL);
+        return;
+    }
+
+    g_pair_reply[slot] = rx;
+    g_pair_roundtrip[slot] = true;
+
+    expect_true("client roundtrip value", rx == tx + 1, "unexpected reply value");
+    pass("pair client runtime accessors");
+    pass("pair client message roundtrip");
+
+    /* Idle forever so the main test can destroy the task pair later. */
+    while (1) {
+        eaPort_Delay_Milliseconds(1000U);
+    }
+}
+
+static void pair_server_task(void *pvParameters)
+{
+    edge_task_pair_runtime_t *runtime = (edge_task_pair_runtime_t *)pvParameters;
+    const char *server_name = edge_task_pair_server_name(runtime);
+    int slot = pair_index_from_name(server_name, true);
+    int rx = 0;
+    int tx = 0;
+
+    if (runtime == NULL || slot < 0) {
+        fail("pair server startup", "bad runtime context");
+        eaPort_Task_Delete(NULL);
+        return;
+    }
+
+    eaPort_Delay_Milliseconds(100U);
+    assert_runtime_accessors(runtime, false);
+
+    /* Proof that the server task can see its own monitor entry. */
+    expect_true("server own index", find_task_index(server_name) >= 0, "server index not found");
+    pass("pair server runtime accessors");
+
+    if (eaPort_Queue_Receive(edge_task_pair_queue_client_to_server(runtime), &rx, eaPort_WAIT_FOREVER) != eaPort_STATUS_OK) {
+        fail("server queue receive", "receive failed");
+        eaPort_Task_Delete(NULL);
+        return;
+    }
+
+    tx = rx + 1;
+    if (eaPort_Queue_Send(edge_task_pair_queue_server_to_client(runtime), &tx, eaPort_WAIT_FOREVER) != eaPort_STATUS_OK) {
+        fail("server queue send", "send failed");
+        eaPort_Task_Delete(NULL);
+        return;
+    }
+
+    /* Keep the server alive for the later cleanup tests. */
+    while (1) {
+        eaPort_Delay_Milliseconds(1000U);
+    }
+}
+
+static void local_task(void *pvParameters)
+{
+    edge_task_pair_runtime_t *runtime = (edge_task_pair_runtime_t *)pvParameters;
+    const char *local_name = edge_task_pair_client_name(runtime);
+    int local_index = local_index_from_name(local_name);
+
+    if (runtime == NULL || local_index < 0) {
+        fail("local task startup", "bad runtime context");
+        eaPort_Task_Delete(NULL);
+        return;
+    }
+
+    eaPort_Delay_Milliseconds(100U);
+    g_local_ready = true;
+    assert_runtime_accessors(runtime, true);
+
+    expect_true("local task index", find_task_index(local_name) >= 0, "local index not found");
+    pass("local runtime accessors");
+
+    while (1) {
+        eaPort_Delay_Milliseconds(1000U);
+    }
+}
+
+static bool create_pair_task(const char *base_name, edge_task_type_t app_type, edge_task_execution_site_t site)
+{
+    return CreateEATaskPinnedToCore(
+               base_name,
+               TEST_PRIORITY,
+               pair_client_task,
+               pair_server_task,
+               TEST_CLIENT_STACK,
+               TEST_SERVER_STACK,
+               TEST_CORE_ID,
+               app_type,
+               TEST_MAE2EL_MS,
+               TEST_DELAY_SENSITIVITY,
+               TEST_ENERGY_SENSITIVITY,
+               site,
+               &kPairSpec,
+               "127.0.0.1",
+               TEST_PERIOD_MS,
+               TEST_CLIENT_WCET,
+               TEST_SERVER_WCET) == 0;
+}
+
+static bool create_local_task(const char *base_name)
+{
+    return CreateEATaskPinnedToCore(
+               base_name,
+               TEST_PRIORITY,
+               local_task,
+               local_task,
+               TEST_LOCAL_STACK,
+               TEST_LOCAL_STACK,
+               TEST_CORE_ID,
+               LOCAL,
+               TEST_MAE2EL_MS,
+               TEST_DELAY_SENSITIVITY,
+               TEST_ENERGY_SENSITIVITY,
+               LOCAL_EXECUTION,
+               &kPairSpec,
+               "0.0.0.0",
+               TEST_PERIOD_MS,
+               TEST_LOCAL_WCET,
+               TEST_LOCAL_WCET) == 0;
+}
+
+static void test_invalid_and_null_paths(void)
+{
+    edge_task_pair_spec_t bad_spec = {
+        .queue_depth = 0U,
+        .message_size = 0U,
+    };
+
+    expect_true("destroy null runtime", edge_task_pair_destroy(NULL, EDGE_TASK_CLEANUP_PAIR) == 0, "destroy(NULL) should be harmless");
+    expect_true("destroy by invalid index", edge_task_pair_destroy_by_task_index(-1, EDGE_TASK_CLEANUP_PAIR) == 1, "invalid index should fail cleanly");
+    expect_true("destroy by null name", edge_task_pair_destroy_by_name(NULL, EDGE_TASK_CLEANUP_PAIR) == 1, "NULL name should fail cleanly");
+    edge_task_pair_runtime_release(NULL);
+    expect_true("runtime release null", true, "runtime_release(NULL) should be harmless");
+
+    expect_true("queue client accessor null", edge_task_pair_queue_client_to_server(NULL) == NULL, "client queue on NULL should be NULL");
+    expect_true("queue server accessor null", edge_task_pair_queue_server_to_client(NULL) == NULL, "server queue on NULL should be NULL");
+    expect_true("client handle accessor null", edge_task_pair_client_handle(NULL) == NULL, "client handle on NULL should be NULL");
+    expect_true("server handle accessor null", edge_task_pair_server_handle(NULL) == NULL, "server handle on NULL should be NULL");
+    expect_true("client name accessor null", edge_task_pair_client_name(NULL) == NULL, "client name on NULL should be NULL");
+    expect_true("server name accessor null", edge_task_pair_server_name(NULL) == NULL, "server name on NULL should be NULL");
+    expect_true("host accessor null", edge_task_pair_host_name(NULL) == NULL, "host on NULL should be NULL");
+    expect_true("role accessor null", edge_task_pair_role(NULL) == EDGE_TASK_PAIR_LOCAL, "role on NULL should default to local");
+    expect_true("id accessor null", edge_task_pair_id(NULL) == 0U, "id on NULL should be zero");
+    expect_true("task index accessor null", edge_task_pair_task_index(NULL) == -1, "task index on NULL should be -1");
+    expect_true("peer index accessor null", edge_task_pair_peer_index(NULL) == -1, "peer index on NULL should be -1");
+
+    expect_true("find task null", find_task_index(NULL) == -1, "find_task_index(NULL) should fail");
+    {
+        task_snapshot_t dummy_snapshot = {0};
+        expect_true("snapshot null inputs", get_task_snapshot(NULL, NULL) == false, "snapshot(NULL,NULL) should fail");
+        expect_true("snapshot null name", get_task_snapshot(NULL, &dummy_snapshot) == false, "snapshot(NULL,ptr) should fail");
+    }
+    expect_true("signal invalid index", get_task_signal(-1) == -1, "invalid signal should be -1");
+    expect_true("cpu cycles invalid index", get_task_cpu_cycles(-1) == 0U, "invalid cpu cycles should be zero");
+    expect_true("data size invalid index", get_task_data_size(-1) == 0U, "invalid data size should be zero");
+    expect_true("OE2EL invalid index", get_task_OE2EL(-1) == 0U, "invalid OE2EL should be zero");
+    expect_true("WCET invalid index", get_task_WCET(-1) == 0U, "invalid WCET should be zero");
+    expect_true("hyperperiod smoke", tasks_compute_hyperperiod() == 0U, "hyperperiod stub should be zero");
+    expect_true("is client task positive", is_client_task("abc-cl-0") == 1, "client suffix should match");
+    expect_true("is client task negative", is_client_task("abc-sv-0") == 0, "server suffix should not match");
+
+    expect_true("reject invalid queue spec", CreateEATaskPinnedToCore(
+                    "BAD",
+                    TEST_PRIORITY,
+                    local_task,
+                    local_task,
+                    TEST_LOCAL_STACK,
+                    TEST_LOCAL_STACK,
+                    TEST_CORE_ID,
+                    LOCAL,
+                    TEST_MAE2EL_MS,
+                    TEST_DELAY_SENSITIVITY,
+                    TEST_ENERGY_SENSITIVITY,
+                    LOCAL_EXECUTION,
+                    &bad_spec,
+                    "0.0.0.0",
+                    TEST_PERIOD_MS,
+                    TEST_LOCAL_WCET,
+                    TEST_LOCAL_WCET) == -1,
+                "invalid queue spec should be rejected");
+
+    pass("null and invalid API paths");
+}
+
+static void test_monitoring_and_updates(void)
+{
+    char local_name[32];
+    char client_name[32];
+    char server_name[32];
+    task_snapshot_t snapshot = {0};
+    int local_idx;
+    int client_idx;
+    int server_idx;
+
+    make_local_name(local_name, sizeof(local_name));
+    make_client_name(client_name, sizeof(client_name), 0U);
+    make_server_name(server_name, sizeof(server_name), 0U);
+
+    local_idx = find_task_index(local_name);
+    client_idx = find_task_index(client_name);
+    server_idx = find_task_index(server_name);
+
+    expect_true("local index present", local_idx >= 0, "local task missing");
+    expect_true("client index present", client_idx >= 0, "client task missing");
+    expect_true("server index present", server_idx >= 0, "server task missing");
+
+    expect_true("local snapshot valid", get_task_snapshot(local_name, &snapshot) && snapshot.valid, "local snapshot invalid");
+    expect_true("client snapshot valid", get_task_snapshot(client_name, &snapshot) && snapshot.valid, "client snapshot invalid");
+    expect_true("server snapshot valid", get_task_snapshot(server_name, &snapshot) && snapshot.valid, "server snapshot invalid");
+
+    expect_true("local exec site", strcmp(get_task_ex_site(local_name), "LOCAL_EXECUTION") == 0, "local exec site mismatch");
+    expect_true("client exec site", strcmp(get_task_ex_site(client_name), "LOCAL_EXECUTION") == 0, "client exec site mismatch");
+
+    update_task_metrics_by_index(client_idx, 11U, 22U, 33U, 44U, 55U);
+    expect_true("client cpu cycles updated", get_task_cpu_cycles(client_idx) == 22U, "client cpu cycles mismatch");
+    expect_true("client data size updated", get_task_data_size(client_idx) == 55U, "client data size mismatch");
+    expect_true("client OE2EL updated", get_task_OE2EL(client_idx) == 11U, "client OE2EL mismatch");
+
+    update_task_metrics(client_name, 66U, 77U, 88U, 99U, 111U);
+    expect_true("client cpu cycles updated again", get_task_cpu_cycles(client_idx) == 77U, "client cpu cycles mismatch after second update");
+    expect_true("client data size updated again", get_task_data_size(client_idx) == 111U, "client data size mismatch after second update");
+    expect_true("client WCET readable", get_task_WCET(client_idx) == TEST_CLIENT_WCET, "client WCET mismatch");
+
+    update_task_metrics_OE2EL(client_name, 123U);
+    expect_true("client OE2EL update helper", get_task_OE2EL(client_idx) == 123U, "client OE2EL helper mismatch");
+
+    pass("monitor snapshot and metric update helpers");
+}
+
+static void test_cleanup_paths(void)
+{
+    char client_name[32];
+    char server_name[32];
+    char local_name[32];
+    int server_idx;
+
+    /* Pair 0: split teardown to exercise client-only and full-pair branches. */
+    make_client_name(client_name, sizeof(client_name), 0U);
+    make_server_name(server_name, sizeof(server_name), 0U);
+    server_idx = find_task_index(server_name);
+    expect_true("pair0 server index present", server_idx >= 0, "pair0 server index missing");
+
+    expect_true("pair0 client-only destroy", edge_task_pair_destroy_by_name(client_name, EDGE_TASK_CLEANUP_CLIENT_ONLY) == 1, "client-only destroy failed");
+    expect_true("pair0 client removed", find_task_index(client_name) < 0, "client should be gone");
+    expect_true("pair0 server remains", find_task_index(server_name) >= 0, "server should remain after client-only destroy");
+    expect_true("pair0 full destroy by index", edge_task_pair_destroy_by_task_index(server_idx, EDGE_TASK_CLEANUP_PAIR) == 1, "full destroy by index failed");
+    expect_true("pair0 fully removed", find_task_index(server_name) < 0, "server should be gone after full destroy");
+
+    /* Pair 1: full teardown by name. */
+    make_client_name(client_name, sizeof(client_name), 1U);
+    make_server_name(server_name, sizeof(server_name), 1U);
+    server_idx = find_task_index(server_name);
+    expect_true("pair1 server index present", server_idx >= 0, "pair1 server index missing");
+    expect_true("pair1 full destroy by name", edge_task_pair_destroy_by_name(server_name, EDGE_TASK_CLEANUP_PAIR) == 1, "destroy by name failed");
+    expect_true("pair1 client removed", find_task_index(client_name) < 0, "pair1 client should be gone");
+    expect_true("pair1 server removed", find_task_index(server_name) < 0, "pair1 server should be gone");
+
+    /* Pair 2: full teardown by task index. */
+    make_client_name(client_name, sizeof(client_name), 2U);
+    make_server_name(server_name, sizeof(server_name), 2U);
+    client_idx = find_task_index(client_name);
+    expect_true("pair2 client index present", client_idx >= 0, "pair2 client index missing");
+    expect_true("pair2 full destroy by client index", edge_task_pair_destroy_by_task_index(client_idx, EDGE_TASK_CLEANUP_PAIR) == 1, "destroy by client index failed");
+    expect_true("pair2 client removed", find_task_index(client_name) < 0, "pair2 client should be gone");
+    expect_true("pair2 server removed", find_task_index(server_name) < 0, "pair2 server should be gone");
+
+    /* Pair 3: no-op path for unknown names, then real cleanup by name. */
+    expect_true("destroy unknown name", edge_task_pair_destroy_by_name("not-a-task", EDGE_TASK_CLEANUP_PAIR) == 1, "unknown name should fail cleanly");
+    make_client_name(client_name, sizeof(client_name), 3U);
+    make_server_name(server_name, sizeof(server_name), 3U);
+    client_idx = find_task_index(client_name);
+    expect_true("pair3 client index present", client_idx >= 0, "pair3 client index missing");
+    expect_true("pair3 full destroy by client name", edge_task_pair_destroy_by_name(client_name, EDGE_TASK_CLEANUP_PAIR) == 1, "pair3 cleanup failed");
+
+    /* Pair 4: full teardown by server index after runtime expansion has already happened. */
+    make_client_name(client_name, sizeof(client_name), 4U);
+    make_server_name(server_name, sizeof(server_name), 4U);
+    server_idx = find_task_index(server_name);
+    expect_true("pair4 server index present", server_idx >= 0, "pair4 server index missing");
+    expect_true("pair4 full destroy by server index", edge_task_pair_destroy_by_task_index(server_idx, EDGE_TASK_CLEANUP_PAIR) == 1, "pair4 cleanup failed");
+
+    make_local_name(local_name, sizeof(local_name));
+    local_idx = find_task_index(local_name);
+    expect_true("local index present", local_idx >= 0, "local index missing");
+    expect_true("local destroy by name", edge_task_pair_destroy_by_name(local_name, EDGE_TASK_CLEANUP_CLIENT_ONLY) == 1, "local destroy failed");
+    expect_true("local task removed", find_task_index(local_name) < 0, "local task should be gone");
+
+    pass("cleanup branch coverage");
+}
+
+void app_main(void)
+{
+    char base_name[32];
+    size_t i;
+
+    printf("=== Task lifecycle test harness ===\n");
+    task_manager_init();
+
+    test_invalid_and_null_paths();
+
+    /*
+     * Create the local task first so we also exercise the local creation branch.
+     * Its runtime will be kept alive until the cleanup phase.
+     */
+    make_local_name(base_name, sizeof(base_name));
+    expect_true("create local task", create_local_task(base_name), "local task creation failed");
+
+    /*
+     * Create five live task pairs before any cleanup. This intentionally forces
+     * the runtime registry to expand past its initial chunk size of four slots.
+     */
+    for (i = 0; i < TEST_PAIR_COUNT; ++i) {
+        expect_true("create pair task", create_pair_task(kPairBaseNames[i], ENRICHED, LOCAL_EXECUTION), "pair task creation failed");
+    }
+
+    /* Wait until the tasks have actually started and produced their READY flags. */
+    for (i = 0; i < TEST_PAIR_COUNT; ++i) {
+        char ready_name[48];
+        snprintf(ready_name, sizeof(ready_name), "pair-%u ready", (unsigned)i);
+        expect_true(ready_name, wait_until((volatile bool *)&g_pair_ready[i], 5000U), "pair did not start in time");
+    }
+    expect_true("local ready", wait_until(&g_local_ready, 5000U), "local task did not start in time");
+
+    /* Prove the queue-based roundtrip happened for all pair tasks. */
+    for (i = 0; i < TEST_PAIR_COUNT; ++i) {
+        char roundtrip_name[48];
+        snprintf(roundtrip_name, sizeof(roundtrip_name), "pair-%u roundtrip", (unsigned)i);
+        expect_true(roundtrip_name, wait_until((volatile bool *)&g_pair_roundtrip[i], 5000U), "pair roundtrip did not complete");
+        expect_true(roundtrip_name, g_pair_reply[i] == ((int)i + 1001), "unexpected roundtrip payload");
+    }
+
+    expect_true("monitored task count", get_num_monitored_tasks() == (TEST_PAIR_COUNT * 2U) + 1U, "unexpected number of monitored tasks");
+
+    test_monitoring_and_updates();
+    test_cleanup_paths();
+
+    expect_true("all monitors cleared", get_num_monitored_tasks() == 0U, "monitor count should be zero after cleanup");
+    pass("runtime registry expansion and cleanup complete");
+
+    printf("=== Task lifecycle tests done: passes=%" PRIu32 " fails=%" PRIu32 " ===\n",
+           (uint32_t)g_pass_count,
+           (uint32_t)g_fail_count);
+
+    while (1) {
+        eaPort_Delay_Milliseconds(5000U);
+    }
+}
