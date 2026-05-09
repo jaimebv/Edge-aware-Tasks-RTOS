@@ -525,6 +525,7 @@ static void test_cleanup_paths(void)
     expect_true("pair0 server remains", get_task_snapshot_by_index(server_idx, &snapshot) && snapshot.valid, "server should remain after client-only destroy");
     expect_true("pair0 full destroy by index", edge_task_pair_destroy_by_task_index(server_idx, EDGE_TASK_CLEANUP_PAIR) == 1, "full destroy by index failed");
     expect_true("pair0 fully removed", get_task_snapshot_by_index(server_idx, &snapshot) == false, "server should be gone after full destroy");
+    expect_true("pair0 stale destroy no-op", edge_task_pair_destroy_by_task_index(client_idx, EDGE_TASK_CLEANUP_PAIR) == 1, "stale destroy should be harmless");
 
     /* Pair 1: full teardown by index. */
     client_idx = g_pair_client_index[1];
