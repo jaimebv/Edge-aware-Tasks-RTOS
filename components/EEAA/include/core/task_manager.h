@@ -227,7 +227,9 @@ int CreateEATaskPinnedToCore(
     unsigned WCET_s);
 
 /*===========================================================================*/
-/* GET METHODS                                                         */
+/* GET METHODS                                                               */
+/* Legacy name-based wrappers remain for compatibility. Prefer index-based    */
+/* helpers in new code.                                                       */
 /*===========================================================================*/
 
 bool get_task_snapshot(const char* taskName, task_snapshot_t* out_snapshot);

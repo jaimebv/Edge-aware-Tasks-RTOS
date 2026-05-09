@@ -537,6 +537,8 @@ int find_task_index(const char *taskName)
         return -1;
     }
 
+    /* Legacy compatibility lookup. New code should use task indices directly. */
+
     eaPort_Mutex_Enter(monitoredTasksMux);
     for (size_t i = 0; i < CONFIG_EA_MAX_TASKS; ++i) {
         if (monitoredTaskHot[i].is_active && strncmp(monitoredTaskCold[i].name, taskName, CONFIG_EA_MAX_TASK_NAME_LEN) == 0) {
