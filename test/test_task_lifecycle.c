@@ -663,6 +663,9 @@ static void test_invalid_and_null_paths(void)
 static void test_monitoring_and_updates(void)
 {
     task_snapshot_t snapshot = {0};
+    char local_name[32];
+    char client_name[32];
+    char server_name[32];
 
     int local_idx = g_local_index;
     int client_idx = g_pair_client_index[0];
@@ -672,29 +675,26 @@ static void test_monitoring_and_updates(void)
     expect_true("client index present", client_idx >= 0, "client task missing");
     expect_true("server index present", server_idx >= 0, "server task missing");
 
+    snprintf(local_name, sizeof(local_name), "%s-lc-0", kLocalBaseName);
+    make_client_name(client_name, sizeof(client_name), 0U);
+    make_server_name(server_name, sizeof(server_name), 0U);
+
     expect_true("local snapshot valid", get_task_snapshot_by_index(local_idx, &snapshot) && snapshot.valid, "local snapshot invalid");
+    expect_true("local snapshot name from cold state", strcmp(snapshot.name, local_name) == 0, "local snapshot name mismatch");
     expect_true("client snapshot valid", get_task_snapshot_by_index(client_idx, &snapshot) && snapshot.valid, "client snapshot invalid");
+    expect_true("client snapshot name from cold state", strcmp(snapshot.name, client_name) == 0, "client snapshot name mismatch");
     expect_true("server snapshot valid", get_task_snapshot_by_index(server_idx, &snapshot) && snapshot.valid, "server snapshot invalid");
+    expect_true("server snapshot name from cold state", strcmp(snapshot.name, server_name) == 0, "server snapshot name mismatch");
 
     expect_true("local exec site", strcmp(get_task_ex_site_by_index(local_idx), "LOCAL_EXECUTION") == 0, "local exec site mismatch");
     expect_true("client exec site", strcmp(get_task_ex_site_by_index(client_idx), "LOCAL_EXECUTION") == 0, "client exec site mismatch");
 
     /* Keep the name-based wrappers around only as display/snapshot compatibility. */
-    {
-        char local_name[32];
-        char client_name[32];
-        char server_name[32];
-
-        snprintf(local_name, sizeof(local_name), "%s-lc-0", kLocalBaseName);
-        make_client_name(client_name, sizeof(client_name), 0U);
-        make_server_name(server_name, sizeof(server_name), 0U);
-
-        expect_true("local snapshot wrapper", get_task_snapshot(local_name, &snapshot) && strcmp(snapshot.name, local_name) == 0, "local snapshot wrapper mismatch");
-        expect_true("client snapshot wrapper", get_task_snapshot(client_name, &snapshot) && strcmp(snapshot.name, client_name) == 0, "client snapshot wrapper mismatch");
-        expect_true("server snapshot wrapper", get_task_snapshot(server_name, &snapshot) && strcmp(snapshot.name, server_name) == 0, "server snapshot wrapper mismatch");
-        expect_true("local exec site wrapper", strcmp(get_task_ex_site(local_name), "LOCAL_EXECUTION") == 0, "local exec site wrapper mismatch");
-        expect_true("client exec site wrapper", strcmp(get_task_ex_site(client_name), "LOCAL_EXECUTION") == 0, "client exec site wrapper mismatch");
-    }
+    expect_true("local snapshot wrapper", get_task_snapshot(local_name, &snapshot) && strcmp(snapshot.name, local_name) == 0, "local snapshot wrapper mismatch");
+    expect_true("client snapshot wrapper", get_task_snapshot(client_name, &snapshot) && strcmp(snapshot.name, client_name) == 0, "client snapshot wrapper mismatch");
+    expect_true("server snapshot wrapper", get_task_snapshot(server_name, &snapshot) && strcmp(snapshot.name, server_name) == 0, "server snapshot wrapper mismatch");
+    expect_true("local exec site wrapper", strcmp(get_task_ex_site(local_name), "LOCAL_EXECUTION") == 0, "local exec site wrapper mismatch");
+    expect_true("client exec site wrapper", strcmp(get_task_ex_site(client_name), "LOCAL_EXECUTION") == 0, "client exec site wrapper mismatch");
 
     update_task_metrics_by_index(client_idx, 11U, 22U, 33U, 44U, 55U);
     expect_true("client cpu cycles updated", get_task_cpu_cycles(client_idx) == 22U, "client cpu cycles mismatch");
@@ -708,6 +708,13 @@ static void test_monitoring_and_updates(void)
 
     update_task_metrics_OE2EL_by_index(client_idx, 123U);
     expect_true("client OE2EL update helper", get_task_OE2EL(client_idx) == 123U, "client OE2EL helper mismatch");
+
+    expect_true("client snapshot refresh valid", get_task_snapshot_by_index(client_idx, &snapshot) && snapshot.valid, "client snapshot refresh invalid");
+    expect_true("client snapshot cpu cycles from hot state", snapshot.cpu_cycles == 77U, "client snapshot cpu cycles mismatch");
+    expect_true("client snapshot OE2EL from hot state", snapshot.OE2EL == 123U, "client snapshot OE2EL mismatch");
+    expect_true("client snapshot period from cold state", snapshot.period == TEST_PERIOD_MS, "client snapshot period mismatch");
+    expect_true("client snapshot WCET from cold state", snapshot.WCET == TEST_CLIENT_WCET, "client snapshot WCET mismatch");
+    expect_true("client snapshot name from cold state", strcmp(snapshot.name, client_name) == 0, "client snapshot name mismatch after refresh");
 
     pass("monitor snapshot and metric update helpers");
 }
