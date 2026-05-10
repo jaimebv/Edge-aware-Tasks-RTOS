@@ -167,6 +167,22 @@ typedef enum {
   EDGE_TASK_CLEANUP_PAIR        = 1,
 } edge_task_cleanup_mode_t;
 
+typedef enum {
+  EDGE_TASK_CREATION_FAILURE_NONE = 0,
+  EDGE_TASK_CREATION_FAILURE_INVALID_SPEC,
+  EDGE_TASK_CREATION_FAILURE_RUNTIME_SLOT,
+  EDGE_TASK_CREATION_FAILURE_QUEUE_CLIENT,
+  EDGE_TASK_CREATION_FAILURE_QUEUE_SERVER,
+  EDGE_TASK_CREATION_FAILURE_CLIENT_TASK,
+  EDGE_TASK_CREATION_FAILURE_SERVER_TASK,
+  EDGE_TASK_CREATION_FAILURE_LOCAL_TASK,
+} edge_task_creation_failure_reason_t;
+
+typedef struct {
+  int task_index;
+  edge_task_creation_failure_reason_t failure_reason;
+} edge_task_creation_result_t;
+
 
 /*===========================================================================*/
 /* EXTERNAL VARIABLES                                                        */
@@ -225,6 +241,27 @@ int CreateEATaskPinnedToCore(
     uint32_t xPeriod, 
     unsigned WCET_c, 
     unsigned WCET_s);
+
+edge_task_creation_result_t CreateEATaskPinnedToCoreEx(
+    const char *const TaskName,
+    uint8_t Priority,
+    eaPort_task_function_t TaskCodeClient,
+    eaPort_task_function_t TaskCodeServer,
+    const uint32_t MemStackDepthClient,
+    const uint32_t MemStackDepthServer,
+    const uint8_t CoreID,
+    edge_task_type_t AppType,
+    unsigned MAE2EL,
+    uint8_t DelaySensibility,
+    uint8_t EnergySensibility,
+    edge_task_execution_site_t DefaultExecutionSite,
+    const edge_task_pair_spec_t *pairSpec,
+    const char *const HostName,
+    uint32_t xPeriod,
+    unsigned WCET_c,
+    unsigned WCET_s);
+
+const char *edge_task_creation_failure_reason_to_string(edge_task_creation_failure_reason_t reason);
 
 /*===========================================================================*/
 /* GET METHODS                                                               */

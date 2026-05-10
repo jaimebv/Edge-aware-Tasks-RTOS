@@ -49,6 +49,18 @@ static void runtime_registry_init(void);
 static bool runtime_registry_expand(void);
 static bool runtime_registry_slot_owned(const edge_task_runtime_slot_t *slot);
 static uint32_t next_pair_id_locked(void);
+static void clear_runtime_monitor_entries(int client_index, int server_index, bool include_server);
+static void cleanup_queue_handle(eaPort_queue_t *queue);
+static void cleanup_task_handle(eaPort_task_t *handle);
+
+__attribute__((weak)) bool edge_task_manager_test_hook_should_fail_creation(
+    edge_task_creation_failure_reason_t reason,
+    const char *task_name)
+{
+    (void)reason;
+    (void)task_name;
+    return false;
+}
 
 
 
@@ -135,6 +147,30 @@ static void cleanup_task_handle(eaPort_task_t *handle)
     if (handle != NULL && *handle != NULL) {
         eaPort_Task_Delete(*handle);
         *handle = NULL;
+    }
+}
+
+const char *edge_task_creation_failure_reason_to_string(edge_task_creation_failure_reason_t reason)
+{
+    switch (reason) {
+        case EDGE_TASK_CREATION_FAILURE_NONE:
+            return "none";
+        case EDGE_TASK_CREATION_FAILURE_INVALID_SPEC:
+            return "invalid-spec";
+        case EDGE_TASK_CREATION_FAILURE_RUNTIME_SLOT:
+            return "runtime-slot";
+        case EDGE_TASK_CREATION_FAILURE_QUEUE_CLIENT:
+            return "queue-client";
+        case EDGE_TASK_CREATION_FAILURE_QUEUE_SERVER:
+            return "queue-server";
+        case EDGE_TASK_CREATION_FAILURE_CLIENT_TASK:
+            return "client-task";
+        case EDGE_TASK_CREATION_FAILURE_SERVER_TASK:
+            return "server-task";
+        case EDGE_TASK_CREATION_FAILURE_LOCAL_TASK:
+            return "local-task";
+        default:
+            return "unknown";
     }
 }
 
@@ -893,48 +929,50 @@ int _CreateTaskPinnedToCore_(
 }
 
 
-int CreateEATaskPinnedToCore(
-    const char *const TaskName, 
-    uint8_t Priority, 
-    eaPort_task_function_t TaskCodeClient, 
-    eaPort_task_function_t TaskCodeServer, 
-    const uint32_t MemStackDepthClient, 
-    const uint32_t MemStackDepthServer, 
-    const uint8_t CoreID, 
-    edge_task_type_t AppType, 
-    unsigned MAE2EL, 
-    uint8_t DelaySensibility, 
-    uint8_t EnergySensibility, 
-    edge_task_execution_site_t DefaultExecutionSite, 
+edge_task_creation_result_t CreateEATaskPinnedToCoreEx(
+    const char *const TaskName,
+    uint8_t Priority,
+    eaPort_task_function_t TaskCodeClient,
+    eaPort_task_function_t TaskCodeServer,
+    const uint32_t MemStackDepthClient,
+    const uint32_t MemStackDepthServer,
+    const uint8_t CoreID,
+    edge_task_type_t AppType,
+    unsigned MAE2EL,
+    uint8_t DelaySensibility,
+    uint8_t EnergySensibility,
+    edge_task_execution_site_t DefaultExecutionSite,
     const edge_task_pair_spec_t *pairSpec,
-    const char *const HostName, 
-    uint32_t xPeriod, 
-    unsigned WCET_c, 
+    const char *const HostName,
+    uint32_t xPeriod,
+    unsigned WCET_c,
     unsigned WCET_s)
 {
-    int task_index = 0;
+    edge_task_creation_result_t result = {
+        .task_index = -1,
+        .failure_reason = EDGE_TASK_CREATION_FAILURE_NONE,
+    };
     const edge_task_pair_spec_t *resolvedSpec = pairSpec;
+    edge_task_pair_runtime_t *edgeRuntime = NULL;
+    int task_index = -1;
+    int actualCore = (CoreID == eaPort_NO_AFFINITY) ? 0 : CoreID;
 
-  
-    // Normalize Core ID for naming (handle -1 for no affinity)
-    int actualCore = (CoreID == eaPort_NO_AFFINITY) ? 0 : CoreID; 
-
-    if (resolvedSpec == NULL) {
-        printf("Error: edge task pair specification is required.\n");
-        return -1;
+    if (TaskName == NULL || TaskCodeClient == NULL || TaskCodeServer == NULL || resolvedSpec == NULL) {
+        result.failure_reason = EDGE_TASK_CREATION_FAILURE_INVALID_SPEC;
+        return result;
     }
 
     if (resolvedSpec->queue_depth == 0U || resolvedSpec->message_size == 0U) {
-        printf("Error: Invalid edge task pair specification.\n");
-        return -1;
+        result.failure_reason = EDGE_TASK_CREATION_FAILURE_INVALID_SPEC;
+        return result;
     }
 
-    /* 1. Reserve a reusable runtime slot */
-    edge_task_pair_runtime_t *edgeRuntime = reserve_pair_runtime();
+    edgeRuntime = reserve_pair_runtime();
     if (edgeRuntime == NULL) {
-        printf("Error: Failed to reserve edge task runtime slot.\n");
-        return -1;
+        result.failure_reason = EDGE_TASK_CREATION_FAILURE_RUNTIME_SLOT;
+        return result;
     }
+
     edgeRuntime->client_index = -1;
     edgeRuntime->server_index = -1;
     if (HostName != NULL) {
@@ -942,12 +980,25 @@ int CreateEATaskPinnedToCore(
     }
     edgeRuntime->role = EDGE_TASK_PAIR_LOCAL;
 
-    /* 2. Queue Creation using Wrapper */
-    edgeRuntime->queue_client_server = eaPort_Queue_Create(resolvedSpec->queue_depth, resolvedSpec->message_size);
-    edgeRuntime->queue_server_client = eaPort_Queue_Create(resolvedSpec->queue_depth, resolvedSpec->message_size);
+    if (edge_task_manager_test_hook_should_fail_creation(EDGE_TASK_CREATION_FAILURE_QUEUE_CLIENT, TaskName)) {
+        result.failure_reason = EDGE_TASK_CREATION_FAILURE_QUEUE_CLIENT;
+        goto error_cleanup;
+    }
 
-    if (edgeRuntime->queue_client_server == NULL || edgeRuntime->queue_server_client == NULL) {
-        printf("Error: Queue creation failed.\n");
+    edgeRuntime->queue_client_server = eaPort_Queue_Create(resolvedSpec->queue_depth, resolvedSpec->message_size);
+    if (edgeRuntime->queue_client_server == NULL) {
+        result.failure_reason = EDGE_TASK_CREATION_FAILURE_QUEUE_CLIENT;
+        goto error_cleanup;
+    }
+
+    if (edge_task_manager_test_hook_should_fail_creation(EDGE_TASK_CREATION_FAILURE_QUEUE_SERVER, TaskName)) {
+        result.failure_reason = EDGE_TASK_CREATION_FAILURE_QUEUE_SERVER;
+        goto error_cleanup;
+    }
+
+    edgeRuntime->queue_server_client = eaPort_Queue_Create(resolvedSpec->queue_depth, resolvedSpec->message_size);
+    if (edgeRuntime->queue_server_client == NULL) {
+        result.failure_reason = EDGE_TASK_CREATION_FAILURE_QUEUE_SERVER;
         goto error_cleanup;
     }
 
@@ -956,13 +1007,10 @@ int CreateEATaskPinnedToCore(
     edgeRuntime->pair_id = next_pair_id_locked();
     eaPort_Mutex_Exit(runtimeRegistryMux);
 
-    /* 3. Handle enriched or remote Tasks */
-    if (AppType != LOCAL) 
-    {
+    if (AppType != LOCAL) {
         char clientBaseName[CONFIG_EA_MAX_TASK_NAME_LEN];
         char serverBaseName[CONFIG_EA_MAX_TASK_NAME_LEN];
-        
-        // Prepare base names: "Name-cl-CoreID", "Name-sv-CoreID"
+
         snprintf(clientBaseName, sizeof(clientBaseName), "%s-cl-%i", TaskName, actualCore);
         snprintf(serverBaseName, sizeof(serverBaseName), "%s-sv-%i", TaskName, actualCore);
 
@@ -972,20 +1020,24 @@ int CreateEATaskPinnedToCore(
 
         printf("Creation: Creating Edge Task: %s.\n", TaskName);
 
-        /* --- A. Create Client Task --- */
+        if (edge_task_manager_test_hook_should_fail_creation(EDGE_TASK_CREATION_FAILURE_CLIENT_TASK, clientBaseName)) {
+            result.failure_reason = EDGE_TASK_CREATION_FAILURE_CLIENT_TASK;
+            goto error_cleanup;
+        }
+
         task_index = _CreateTaskPinnedToCore_(
-            TaskCodeClient, 
-            clientBaseName, 
-            MemStackDepthClient, 
+            TaskCodeClient,
+            clientBaseName,
+            MemStackDepthClient,
             (void *)edgeRuntime,
-            Priority, 
-            CoreID, 
-            AppType, 
-            CLIENT_SEGMENT, 
-            MAE2EL, 
-            DelaySensibility, 
-            EnergySensibility, 
-            HostName, 
+            Priority,
+            CoreID,
+            AppType,
+            CLIENT_SEGMENT,
+            MAE2EL,
+            DelaySensibility,
+            EnergySensibility,
+            HostName,
             edgeRuntime,
             DefaultExecutionSite,
             &edgeRuntime->HandlerClient,
@@ -994,101 +1046,150 @@ int CreateEATaskPinnedToCore(
         );
 
         if (task_index < 0) {
-            printf("Error: Client task creation failed.\n");
+            result.failure_reason = EDGE_TASK_CREATION_FAILURE_CLIENT_TASK;
             goto error_cleanup;
         }
+
         edgeRuntime->client_index = task_index;
         update_monitor_linkage_by_index((size_t)task_index, edgeRuntime->pair_id, task_index, edgeRuntime->server_index);
 
-        /*If edge task is connected to Local as defalt*/
-        //TODO: We should always create the task any how if it is enhanced, just suspend it 
-        // after creatin if DefaultExecutionSite != LOCAL_EXECUTION
+        if (DefaultExecutionSite == LOCAL_EXECUTION) {
+            if (edge_task_manager_test_hook_should_fail_creation(EDGE_TASK_CREATION_FAILURE_SERVER_TASK, serverBaseName)) {
+                result.failure_reason = EDGE_TASK_CREATION_FAILURE_SERVER_TASK;
+                goto error_cleanup;
+            }
 
-        /* --- B. Create Server Task (if Local Execution) --- */
-        // TODO: We should always create the task, just suspend it if REMOTE
-        if (DefaultExecutionSite == LOCAL_EXECUTION)
-        {
             task_index = _CreateTaskPinnedToCore_(
-                TaskCodeServer, 
-                serverBaseName, 
-                MemStackDepthServer, 
+                TaskCodeServer,
+                serverBaseName,
+                MemStackDepthServer,
                 (void *)edgeRuntime,
-                Priority, 
-                CoreID, 
-                AppType, 
-                SERVER_SEGMENT, 
-                MAE2EL, 
-                DelaySensibility, 
-                EnergySensibility, 
-                HostName, 
+                Priority,
+                CoreID,
+                AppType,
+                SERVER_SEGMENT,
+                MAE2EL,
+                DelaySensibility,
+                EnergySensibility,
+                HostName,
                 edgeRuntime,
-                DefaultExecutionSite, 
+                DefaultExecutionSite,
                 &edgeRuntime->HandlerServer,
                 xPeriod,
                 WCET_s
             );
 
             if (task_index < 0) {
-                printf("Error: Server task creation failed.\n");
-                // Need to clean up the client task created in step A
-                cleanup_task_handle(&edgeRuntime->HandlerClient);
-                clear_runtime_monitor_entries(edgeRuntime->client_index, -1, false);
+                result.failure_reason = EDGE_TASK_CREATION_FAILURE_SERVER_TASK;
                 goto error_cleanup;
             }
+
             edgeRuntime->server_index = task_index;
             update_monitor_linkage_by_index((size_t)edgeRuntime->client_index, edgeRuntime->pair_id, edgeRuntime->client_index, edgeRuntime->server_index);
             update_monitor_linkage_by_index((size_t)edgeRuntime->server_index, edgeRuntime->pair_id, edgeRuntime->server_index, edgeRuntime->client_index);
-
         }
-    }
-    /* 4. Handle Local Tasks */
-    else 
-    {
+    } else {
         char localBaseName[CONFIG_EA_MAX_TASK_NAME_LEN];
-        snprintf(localBaseName, sizeof(localBaseName), "%s-lc-%i", TaskName, actualCore);
 
+        snprintf(localBaseName, sizeof(localBaseName), "%s-lc-%i", TaskName, actualCore);
         snprintf(edgeRuntime->client_name, sizeof(edgeRuntime->client_name), "%s", localBaseName);
         edgeRuntime->server_name[0] = '\0';
         edgeRuntime->role = EDGE_TASK_PAIR_LOCAL;
 
+        if (edge_task_manager_test_hook_should_fail_creation(EDGE_TASK_CREATION_FAILURE_LOCAL_TASK, localBaseName)) {
+            result.failure_reason = EDGE_TASK_CREATION_FAILURE_LOCAL_TASK;
+            goto error_cleanup;
+        }
+
         task_index = _CreateTaskPinnedToCore_(
-            TaskCodeClient, 
-            localBaseName, 
-            MemStackDepthClient, 
+            TaskCodeClient,
+            localBaseName,
+            MemStackDepthClient,
             (void *)edgeRuntime,
-            Priority, 
-            CoreID, 
-            AppType, 
-            UNIQUE_SEGMENT, 
-            MAE2EL, 
-            DelaySensibility, 
-            EnergySensibility, 
-            "0.0.0.0", 
-            edgeRuntime, 
-            LOCAL_EXECUTION, 
+            Priority,
+            CoreID,
+            AppType,
+            UNIQUE_SEGMENT,
+            MAE2EL,
+            DelaySensibility,
+            EnergySensibility,
+            "0.0.0.0",
+            edgeRuntime,
+            LOCAL_EXECUTION,
             &edgeRuntime->HandlerClient,
             xPeriod,
             WCET_c
         );
 
         if (task_index < 0) {
-            printf("Error: Local task creation failed.\n");
+            result.failure_reason = EDGE_TASK_CREATION_FAILURE_LOCAL_TASK;
             goto error_cleanup;
         }
+
         edgeRuntime->client_index = task_index;
         update_monitor_linkage_by_index((size_t)task_index, edgeRuntime->pair_id, task_index, -1);
-
     }
 
-    return 0; // Success
+    result.task_index = edgeRuntime->client_index;
+    result.failure_reason = EDGE_TASK_CREATION_FAILURE_NONE;
+    return result;
 
-/* 5. Centralized Error Handling */
 error_cleanup:
-    if (edgeRuntime) {
+    if (edgeRuntime != NULL) {
         runtime_mark_cleaning(edgeRuntime);
+        cleanup_task_handle(&edgeRuntime->HandlerServer);
+        cleanup_task_handle(&edgeRuntime->HandlerClient);
         cleanup_queue_handle(&edgeRuntime->queue_client_server);
         cleanup_queue_handle(&edgeRuntime->queue_server_client);
+        clear_runtime_monitor_entries(edgeRuntime->client_index, edgeRuntime->server_index, edgeRuntime->server_index >= 0);
         release_pair_runtime_impl(edgeRuntime);
     }
-    return -1;
+
+    return result;
+}
+
+int CreateEATaskPinnedToCore(
+    const char *const TaskName,
+    uint8_t Priority,
+    eaPort_task_function_t TaskCodeClient,
+    eaPort_task_function_t TaskCodeServer,
+    const uint32_t MemStackDepthClient,
+    const uint32_t MemStackDepthServer,
+    const uint8_t CoreID,
+    edge_task_type_t AppType,
+    unsigned MAE2EL,
+    uint8_t DelaySensibility,
+    uint8_t EnergySensibility,
+    edge_task_execution_site_t DefaultExecutionSite,
+    const edge_task_pair_spec_t *pairSpec,
+    const char *const HostName,
+    uint32_t xPeriod,
+    unsigned WCET_c,
+    unsigned WCET_s)
+{
+    edge_task_creation_result_t result = CreateEATaskPinnedToCoreEx(
+        TaskName,
+        Priority,
+        TaskCodeClient,
+        TaskCodeServer,
+        MemStackDepthClient,
+        MemStackDepthServer,
+        CoreID,
+        AppType,
+        MAE2EL,
+        DelaySensibility,
+        EnergySensibility,
+        DefaultExecutionSite,
+        pairSpec,
+        HostName,
+        xPeriod,
+        WCET_c,
+        WCET_s);
+
+    if (result.failure_reason != EDGE_TASK_CREATION_FAILURE_NONE) {
+        printf("Error: Task creation failed (%s).\n", edge_task_creation_failure_reason_to_string(result.failure_reason));
+        return -1;
+    }
+
+    return 0;
 }
