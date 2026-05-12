@@ -97,6 +97,8 @@ typedef struct {
 
 /**
  * @brief Cold monitoring metadata updated by the controller/offloader path.
+ * Keep identity-linkage in hot state; cold state is for names, host,
+ * execution-site, scheduling targets, and debug metadata.
  */
 typedef struct {
     char                    name[CONFIG_EA_MAX_TASK_NAME_LEN];
