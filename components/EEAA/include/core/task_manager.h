@@ -450,6 +450,10 @@ int end_task_monitoring_(
 void check_self_suspend (int taskIndex);
 
 
+/**
+ * @deprecated Compatibility wrapper for legacy name-based metric updates.
+ * Prefer the index-based update helpers in new code.
+ */
 void update_task_metrics(
     const char *taskName, 
     uint32_t newOE2EL, 
@@ -468,14 +472,26 @@ void update_task_metrics_by_index(
     uint32_t newDataSize);
 
 
+/**
+ * @deprecated Compatibility wrapper for legacy name-based metric updates.
+ * Prefer the index-based update helpers in new code.
+ */
 void update_task_metrics_OE2EL(const char *taskName, uint32_t newOE2EL);
 
 void update_task_metrics_OE2EL_by_index(int taskIndex, uint32_t newOE2EL);
 
 
+/**
+ * @deprecated Compatibility wrapper for legacy name-based lookup.
+ * Prefer tracked task indices and runtime accessors.
+ */
 int find_task_index(const char *taskName);
 
 
+/**
+ * @deprecated Compatibility wrapper for legacy name-based removal.
+ * Prefer remove_monitored_task_by_index() when the index is known.
+ */
 void remove_monitored_task(const char *taskName);
 
 void remove_monitored_task_by_index(int taskIndex);
