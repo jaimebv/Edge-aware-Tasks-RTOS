@@ -153,17 +153,30 @@ typedef struct {
 /**
  * @brief Opaque runtime state shared by the paired client/server tasks.
  *
- * Use the accessor helpers below instead of reaching into the structure
- * directly. This keeps the task runtime separate from monitoring metadata.
+ * Owned by the task manager. Callers should treat pointers as borrowed views
+ * only and must not free or persist them after the runtime is retired.
  */
 typedef struct edge_task_pair_runtime edge_task_pair_runtime_t;
 
+/**
+ * @brief API role for paired task runtimes.
+ *
+ * CLIENT: client half of a pair.
+ * SERVER: server half of a pair.
+ * LOCAL: single-task mode with no server half.
+ */
 typedef enum {
   EDGE_TASK_PAIR_CLIENT = 0,
   EDGE_TASK_PAIR_SERVER = 1,
   EDGE_TASK_PAIR_LOCAL  = 2,
 } edge_task_pair_role_t;
 
+/**
+ * @brief Teardown semantics for runtime cleanup.
+ *
+ * CLIENT_ONLY removes the client/local task and its monitor entry.
+ * PAIR removes both halves, queues, monitor entries, and releases runtime.
+ */
 typedef enum {
   EDGE_TASK_CLEANUP_CLIENT_ONLY = 0,
   EDGE_TASK_CLEANUP_PAIR        = 1,
@@ -267,38 +280,100 @@ const char *edge_task_creation_failure_reason_to_string(edge_task_creation_failu
 
 /*===========================================================================*/
 /* GET METHODS                                                               */
-/* Legacy name-based wrappers remain for compatibility. Prefer index-based    */
-/* helpers in new code.                                                       */
+/* Legacy name-based wrappers are compatibility-only and should be treated   */
+/* as deprecated in new code. Prefer index-based helpers where possible.     */
+/* Runtime accessors are valid only while the runtime is active.             */
+/* NULL-safe behavior: inactive or NULL inputs return NULL/0/false.          */
 /*===========================================================================*/
 
+/**
+ * @deprecated Compatibility wrapper for legacy name-based snapshot lookup.
+ * Prefer get_task_snapshot_by_index() when the task index is known.
+ */
 bool get_task_snapshot(const char* taskName, task_snapshot_t* out_snapshot);
 
+/**
+ * @brief Snapshot a monitored task by index.
+ *
+ * Valid only while the task is active; returns false for invalid, destroyed,
+ * or inactive entries.
+ */
 bool get_task_snapshot_by_index(int taskIndex, task_snapshot_t* out_snapshot);
 
 size_t get_num_monitored_tasks(void);
 
+/**
+ * @brief Get the client->server queue for an active runtime.
+ * Returns NULL if the runtime is NULL or inactive.
+ */
 eaPort_queue_t edge_task_pair_queue_client_to_server(const edge_task_pair_runtime_t *runtime);
 
+/**
+ * @brief Get the server->client queue for an active runtime.
+ * Returns NULL if the runtime is NULL or inactive.
+ */
 eaPort_queue_t edge_task_pair_queue_server_to_client(const edge_task_pair_runtime_t *runtime);
 
+/**
+ * @brief Get the client task handle for an active runtime.
+ * Returns NULL if the runtime is NULL or inactive.
+ */
 eaPort_task_t edge_task_pair_client_handle(const edge_task_pair_runtime_t *runtime);
 
+/**
+ * @brief Get the server task handle for an active runtime.
+ * Returns NULL if the runtime is NULL or inactive.
+ */
 eaPort_task_t edge_task_pair_server_handle(const edge_task_pair_runtime_t *runtime);
 
+/**
+ * @brief Get the client task name for an active runtime.
+ * Returns NULL if the runtime is NULL or inactive.
+ */
 const char *edge_task_pair_client_name(const edge_task_pair_runtime_t *runtime);
 
+/**
+ * @brief Get the server task name for an active runtime.
+ * Returns NULL if the runtime is NULL or inactive.
+ */
 const char *edge_task_pair_server_name(const edge_task_pair_runtime_t *runtime);
 
+/**
+ * @brief Get the host label for an active runtime.
+ * Returns NULL if the runtime is NULL or inactive.
+ */
 const char *edge_task_pair_host_name(const edge_task_pair_runtime_t *runtime);
 
+/**
+ * @brief Get the runtime role.
+ * Returns EDGE_TASK_PAIR_LOCAL for NULL or inactive runtimes.
+ */
 edge_task_pair_role_t edge_task_pair_role(const edge_task_pair_runtime_t *runtime);
 
+/**
+ * @brief Get the pair identifier.
+ * Returns 0 for NULL or inactive runtimes.
+ */
 uint32_t edge_task_pair_id(const edge_task_pair_runtime_t *runtime);
 
+/**
+ * @brief Get the client task index.
+ * Returns -1 for NULL or inactive runtimes.
+ */
 int edge_task_pair_task_index(const edge_task_pair_runtime_t *runtime);
 
+/**
+ * @brief Get the peer task index.
+ * Returns -1 for NULL or inactive runtimes.
+ */
 int edge_task_pair_peer_index(const edge_task_pair_runtime_t *runtime);
 
+/**
+ * @brief Release a runtime pointer owned by the task manager.
+ *
+ * Only valid while the runtime is still active or during teardown code that
+ * is explicitly retiring the allocation.
+ */
 void edge_task_pair_runtime_release(edge_task_pair_runtime_t *runtime);
 
 /**
@@ -310,17 +385,34 @@ void edge_task_pair_runtime_release(edge_task_pair_runtime_t *runtime);
  */
 int edge_task_pair_destroy(edge_task_pair_runtime_t *runtime, edge_task_cleanup_mode_t mode);
 
+/**
+ * @deprecated Compatibility wrapper for legacy index-based teardown.
+ * Prefer edge_task_pair_destroy_by_name() only when the runtime name is the
+ * only identifier available.
+ */
 int edge_task_pair_destroy_by_task_index(int taskIndex, edge_task_cleanup_mode_t mode);
 
+/**
+ * @deprecated Compatibility wrapper for legacy name-based teardown.
+ * Prefer index-based teardown when the runtime index is available.
+ */
 int edge_task_pair_destroy_by_name(const char *taskName, edge_task_cleanup_mode_t mode);
 
 
+/**
+ * @deprecated Compatibility wrapper for legacy name-based lookup.
+ * Prefer runtime accessors or tracked task indices in new code.
+ */
 int get_task_index(const char *taskName);
 
 
 int get_task_signal(int taskIndex);
 
 
+/**
+ * @deprecated Compatibility wrapper for legacy name-based lookup.
+ * Prefer get_task_ex_site_by_index() for known monitored indices.
+ */
 const char* get_task_ex_site(const char *taskName);
 
 const char* get_task_ex_site_by_index(int taskIndex);
