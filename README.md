@@ -62,6 +62,16 @@ pio run -d . -e nodemcu-32s -t upload
 pio device monitor -p /dev/ttyUSB0 -b 115200
 ```
 
+## Documentation
+
+Generate the API reference with Doxygen:
+
+```bash
+doxygen Doxyfile
+```
+
+The generated HTML lives in `docs/doxygen/html/`.
+
 ## Example entry points
 
 - `components/EEAA/examples/tasks/ea_task_creation_example.c` — dynamic edge-task pair creation
@@ -95,6 +105,16 @@ Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before
 - Keep abstractions small and readable.
 - Avoid introducing API changes without updating examples and docs.
 - Preserve the RTOS-agnostic boundaries between `port/`, `core/`, and `examples/`.
+
+### Documentation standard
+
+- Use Doxygen block comments for every public function, struct, enum, and typedef.
+- Start each public item with a one-line `@brief`.
+- Document parameters with `@param[in]`, `@param[out]`, or `@param[in,out]` as appropriate.
+- Document return values with `@return`.
+- Use `@note`, `@warning`, `@deprecated`, and `@see` when they add real value.
+- Keep public-header comments as the source of truth; update them whenever behavior changes.
+- Regenerate the Doxygen output whenever public APIs, contracts, or examples change.
 
 ## License
 
