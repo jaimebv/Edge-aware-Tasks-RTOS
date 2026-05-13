@@ -25,3 +25,9 @@ That makes the serial log easy to scan during board verification.
 
 This harness proves that the task manager behaves correctly on real hardware,
 not just at compile time.
+
+## Runner note
+
+The lifecycle harness is isolated from the board harness.
+Run `test/test_task_lifecycle.c` on its own when validating task-manager
+changes; run `test/test_port_board.c` separately for PORT changes.
