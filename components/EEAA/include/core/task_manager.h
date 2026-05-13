@@ -1,3 +1,13 @@
+/**
+ * @file task_manager.h
+ * @brief Task management and monitoring API for EEAA.
+ *
+ * @details
+ * This module owns the public task lifecycle API, the runtime accessors used
+ * by paired tasks, and the monitoring helpers that expose task snapshots and
+ * metrics to the rest of the system.
+ */
+
 #ifndef TASKMANAGER_H
 #define TASKMANAGER_H
 
@@ -8,6 +18,11 @@
 #include "config/config_ea_system.h"
 #include "port/port_interface_types.h"
 
+
+/** @defgroup eeaa_task_manager Task manager API
+ * @brief Task lifecycle, runtime accessors, snapshots, and cleanup helpers.
+ * @{
+ */
 
 #ifdef __cplusplus
 extern "C" {
@@ -209,14 +224,20 @@ typedef struct {
 
 
 /**
- * @brief Initialize the task manager (create mutexes, clear arrays)
- * Must be called before creating any tasks.
+ * @brief Initialize the task manager.
+ *
+ * Creates the internal mutexes, clears monitoring state, and resets the
+ * runtime registry. Call once before creating any tasks.
  */
 void task_manager_init(void);
 
 struct edge_task_pair_runtime;
-
-
+/**
+ * @brief Create a task and register its monitoring state.
+ *
+ * Internal helper used by the task-manager creation flow to create one task,
+ * populate its monitor slot, and attach it to the shared runtime record.
+ */
 int _CreateTaskPinnedToCore_(
     eaPort_task_function_t pxTaskCode, 
     const char *const pcName, 
@@ -236,8 +257,12 @@ int _CreateTaskPinnedToCore_(
     uint32_t xPeriod,
     unsigned WCET
 );
-
-
+/**
+ * @brief Create a task pair using the legacy integer return contract.
+ *
+ * This wrapper preserves the historical API behavior and returns 0 on
+ * success, -1 on failure.
+ */
 int CreateEATaskPinnedToCore(
     const char *const TaskName, 
     uint8_t Priority, 
@@ -257,6 +282,12 @@ int CreateEATaskPinnedToCore(
     unsigned WCET_c, 
     unsigned WCET_s);
 
+/**
+ * @brief Create a task pair and return a structured result.
+ *
+ * The structured result distinguishes the task index from the precise failure
+ * reason, allowing callers and tests to validate rollback behavior.
+ */
 edge_task_creation_result_t CreateEATaskPinnedToCoreEx(
     const char *const TaskName,
     uint8_t Priority,
@@ -275,7 +306,12 @@ edge_task_creation_result_t CreateEATaskPinnedToCoreEx(
     uint32_t xPeriod,
     unsigned WCET_c,
     unsigned WCET_s);
-
+/**
+ * @brief Convert a creation failure reason to a stable text label.
+ *
+ * @param[in] reason Failure enum value.
+ * @return Human-readable static string for logging and tests.
+ */
 const char *edge_task_creation_failure_reason_to_string(edge_task_creation_failure_reason_t reason);
 
 /*===========================================================================*/
@@ -300,6 +336,11 @@ bool get_task_snapshot(const char* taskName, task_snapshot_t* out_snapshot);
  */
 bool get_task_snapshot_by_index(int taskIndex, task_snapshot_t* out_snapshot);
 
+/**
+ * @brief Return the number of active monitored tasks.
+ *
+ * @return Number of currently active monitor entries.
+ */
 size_t get_num_monitored_tasks(void);
 
 /**
@@ -387,8 +428,7 @@ int edge_task_pair_destroy(edge_task_pair_runtime_t *runtime, edge_task_cleanup_
 
 /**
  * @deprecated Compatibility wrapper for legacy index-based teardown.
- * Prefer edge_task_pair_destroy_by_name() only when the runtime name is the
- * only identifier available.
+ * Prefer edge_task_pair_destroy() when a runtime pointer is available.
  */
 int edge_task_pair_destroy_by_task_index(int taskIndex, edge_task_cleanup_mode_t mode);
 
@@ -406,6 +446,12 @@ int edge_task_pair_destroy_by_name(const char *taskName, edge_task_cleanup_mode_
 int get_task_index(const char *taskName);
 
 
+/**
+ * @brief Return the current signal request for a monitored task.
+ *
+ * @param[in] taskIndex Monitored task index.
+ * @return Current signal value, or -1 when the index is invalid.
+ */
 int get_task_signal(int taskIndex);
 
 
@@ -415,38 +461,95 @@ int get_task_signal(int taskIndex);
  */
 const char* get_task_ex_site(const char *taskName);
 
+/**
+ * @brief Return the execution-site label for a monitored task.
+ *
+ * @param[in] taskIndex Monitored task index.
+ * @return Static execution-site string, or "UNKNOWN" if invalid.
+ */
 const char* get_task_ex_site_by_index(int taskIndex);
 
+/**
+ * @brief Return the accumulated CPU cycles for a monitored task.
+ *
+ * @param[in] taskIndex Monitored task index.
+ * @return CPU cycle count, or 0 when the index is invalid.
+ */
 uint32_t get_task_cpu_cycles(int taskIndex);
 
 
+/**
+ * @brief Return the last recorded data size for a monitored task.
+ *
+ * @param[in] taskIndex Monitored task index.
+ * @return Recorded payload size in bytes, or 0 when invalid.
+ */
 uint32_t get_task_data_size(int taskIndex);
 
 
+/**
+ * @brief Return the current OE2EL value for a monitored task.
+ *
+ * @param[in] taskIndex Monitored task index.
+ * @return OE2EL metric, or 0 when invalid.
+ */
 unsigned get_task_OE2EL(int taskIndex);
 
 
+/**
+ * @brief Return the WCET configured for a monitored task.
+ *
+ * @param[in] taskIndex Monitored task index.
+ * @return WCET value, or 0 when invalid.
+ */
 unsigned get_task_WCET(int taskIndex);
 
 
 /*===========================================================================*/
 /* TASK MANAGEMENT METHODS                                                   */
 /*===========================================================================*/
+/**
+ * @brief Capture the start point for a monitoring interval.
+ *
+ * @return Snapshot containing the current tick and cycle counter.
+ */
 edge_task_monitor_sample_t start_task_monitoring(void);
 
 
+/**
+ * @brief Finalize monitoring for a local operation.
+ *
+ * @param[in] sample Monitoring sample previously returned by
+ *                   start_task_monitoring().
+ * @param[in] message_size Message payload size in bytes.
+ * @return Synthetic monitoring cost used by the caller.
+ */
 int end_task_monitoring(
     edge_task_monitor_sample_t sample,
     uint32_t message_size);
 
 
+/**
+ * @brief Finalize monitoring for a remote operation.
+ *
+ * @param[in] sample Monitoring sample previously returned by
+ *                   start_task_monitoring().
+ * @param[in] message_size Message payload size in bytes.
+ * @param[in] remote_time Remote execution time contribution.
+ * @param[in] remote_flag Whether the remote path was taken.
+ * @return Synthetic monitoring cost used by the caller.
+ */
 int end_task_monitoring_(
     edge_task_monitor_sample_t sample,
     uint32_t message_size,
     uint32_t remote_time, 
     bool remote_flag);
 
-
+/**
+ * @brief Suspend the current task if its monitor requests suspension.
+ *
+ * @param[in] taskIndex Monitored task index to inspect.
+ */
 void check_self_suspend (int taskIndex);
 
 
@@ -463,6 +566,16 @@ void update_task_metrics(
     uint32_t newDataSize);
 
 
+/**
+ * @brief Update all hot metrics for a monitored task by index.
+ *
+ * @param[in] taskIndex Monitored task index.
+ * @param[in] newOE2EL New OE2EL metric.
+ * @param[in] newCycles New CPU cycle count.
+ * @param[in] newStartTick New monitoring start tick.
+ * @param[in] newEndTick New monitoring end tick.
+ * @param[in] newDataSize New payload size in bytes.
+ */
 void update_task_metrics_by_index(
     int taskIndex, 
     uint32_t newOE2EL, 
@@ -478,12 +591,24 @@ void update_task_metrics_by_index(
  */
 void update_task_metrics_OE2EL(const char *taskName, uint32_t newOE2EL);
 
+/**
+ * @brief Update only the OE2EL metric for a monitored task.
+ *
+ * @param[in] taskIndex Monitored task index.
+ * @param[in] newOE2EL New OE2EL metric.
+ */
 void update_task_metrics_OE2EL_by_index(int taskIndex, uint32_t newOE2EL);
 
 
 /**
  * @deprecated Compatibility wrapper for legacy name-based lookup.
  * Prefer tracked task indices and runtime accessors.
+ */
+/**
+ * @brief Find the monitored index for a task name.
+ *
+ * @param[in] taskName Null-terminated task name.
+ * @return Monitored index, or -1 if the task is not active.
  */
 int find_task_index(const char *taskName);
 
@@ -494,12 +619,28 @@ int find_task_index(const char *taskName);
  */
 void remove_monitored_task(const char *taskName);
 
+/**
+ * @brief Remove a monitored task entry by index.
+ *
+ * @param[in] taskIndex Monitored task index.
+ */
 void remove_monitored_task_by_index(int taskIndex);
 
 
+/**
+ * @brief Check whether a task name uses the client suffix.
+ *
+ * @param[in] str Task name to inspect.
+ * @return 1 when the name contains the client marker, otherwise 0.
+ */
 int is_client_task(const char* str);
 
 
+/**
+ * @brief Compute the monitoring hyperperiod.
+ *
+ * @return Hyperperiod in ticks or 0 when no scheduling model is available.
+ */
 uint32_t tasks_compute_hyperperiod();
 
 
@@ -509,5 +650,7 @@ uint32_t tasks_compute_hyperperiod();
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* TASKMANAGER_H */

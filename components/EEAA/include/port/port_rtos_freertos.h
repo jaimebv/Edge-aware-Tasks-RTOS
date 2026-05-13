@@ -124,39 +124,45 @@ void eaPort_Mutex_Exit(eaPort_mutex_t mutex);
 
 /**
  * @brief Creates a new queue.
- * * @param queue_length The maximum number of items the queue can hold.
- * @param item_size The size (in bytes) of each item in the queue.
- * @return eaPort_queue_t Handle to the created queue, or NULL if failed.
+ *
+ * @param[in] queue_length Maximum number of items the queue can hold.
+ * @param[in] item_size Size in bytes of each queue item.
+ * @return Handle to the created queue, or NULL on failure.
  */
 eaPort_queue_t eaPort_Queue_Create(uint32_t queue_length, uint32_t item_size);
 
 /**
  * @brief Deletes a queue and frees memory.
- * @param queue Handle of the queue to delete.
+ *
+ * @param[in] queue Queue handle to delete.
  */
 void eaPort_Queue_Delete(eaPort_queue_t queue);
 
 /**
- * @brief Sends an item to the queue (Copy by value).
- * * @param queue The queue handle.
- * @param item Pointer to the item to copy into the queue.
- * @param wait_ms Time to wait in milliseconds if queue is full. 
- * Use eaPort_WAIT_FOREVER or eaPort_NO_WAIT.
- * @return eaPort_status_t eaPort_STATUS_OK on success, eaPort_STATUS_ERROR on timeout/fail.
+ * @brief Sends an item to the queue by value.
+ *
+ * @param[in] queue Queue handle.
+ * @param[in] item Pointer to the item to copy into the queue.
+ * @param[in] wait_ms Wait time in milliseconds, or eaPort_WAIT_FOREVER.
+ * @return eaPort_STATUS_OK on success, eaPort_STATUS_ERROR on timeout or failure.
  */
 eaPort_status_t eaPort_Queue_Send(eaPort_queue_t queue, const void *item, uint32_t wait_ms);
 
 /**
  * @brief Receives an item from the queue.
- * * @param queue The queue handle.
- * @param buffer Pointer to memory where the item will be copied.
- * @param wait_ms Time to wait in milliseconds if queue is empty.
- * @return eaPort_status_t eaPort_STATUS_OK on success, eaPort_STATUS_ERROR on timeout/fail.
+ *
+ * @param[in] queue Queue handle.
+ * @param[out] buffer Destination buffer for the copied item.
+ * @param[in] wait_ms Wait time in milliseconds, or eaPort_WAIT_FOREVER.
+ * @return eaPort_STATUS_OK on success, eaPort_STATUS_ERROR on timeout or failure.
  */
 eaPort_status_t eaPort_Queue_Receive(eaPort_queue_t queue, void *buffer, uint32_t wait_ms);
 
 /**
  * @brief Returns the number of items currently stored in the queue.
+ *
+ * @param[in] queue Queue handle.
+ * @return Number of queued items, or 0 if the queue is NULL.
  */
 uint32_t eaPort_Queue_Messages_Waiting(eaPort_queue_t queue);
 
@@ -323,7 +329,10 @@ eaPort_tick_t eaPort_Get_Tick_Time(void);
 
 /**
  * @brief Delays the calling task for a specified number of milliseconds.
+ *
  * Puts the task into the Blocked state for at least the specified duration.
+ *
+ * @param[in] ms Delay duration in milliseconds.
  */
 void eaPort_Delay_Milliseconds(uint32_t ms);
 
@@ -340,22 +349,27 @@ void eaPort_Delay_Until(eaPort_tick_t *previousWakeTime, uint32_t timeIncrementM
 
 /**
  * @brief Retrieves detailed information about a specific task.
- * Populates the provided eaPort_task_info_t structure with data
+ *
+ * @param[out] taskInfo Destination structure to populate.
+ * @param[in] taskHandle Task handle to inspect.
+ * @return eaPort_STATUS_OK on success, eaPort_STATUS_ERROR on failure.
  */
 eaPort_status_t eaPort_Get_Task_Info (eaPort_task_info_t *taskInfo, eaPort_task_t *taskHandle);
 
 
 /**
  * @brief Retrieves the handle of the currently executing task.
- * @return eaPort_task_t Handle of the current task.
+ *
+ * @return Handle of the current task.
  */
 eaPort_task_t eaPort_Get_Current_Task_Handle();
 
 
 /** 
  * @brief Retrieves the handle of a task by its name.
+ *
  * @param[in] taskName Null-terminated name of the task to find.
- * @return eaPort_task_t Handle of the task if found, NULL if not found.
+ * @return Handle of the task if found, NULL if not found.
  */
 eaPort_task_t eaPort_Get_Task_Handle_By_Name(const char* taskName);
 
