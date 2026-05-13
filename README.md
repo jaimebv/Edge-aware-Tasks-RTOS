@@ -33,7 +33,7 @@ That structure makes the repo useful for studying edge-oriented workloads, deadl
 - `components/EEAA/include/` — public headers
 - `components/EEAA/src/` — component implementation
 - `components/EEAA/examples/` — runnable usage examples
-- `docs/` — long-form system, test, and workflow documentation
+- `docs/` — long-form system, component, and test documentation
 - `src/main.c` — application entrypoint
 - `platformio.ini` — PlatformIO environment configuration
 
@@ -62,6 +62,25 @@ pio run -d . -e nodemcu-32s -t upload
 ```bash
 pio device monitor -p /dev/ttyUSB0 -b 115200
 ```
+
+## Documentation
+
+Read the human-facing documentation hub:
+
+- `docs/index.md`
+- `docs/system/System_Architecture.md`
+- `docs/system/SystemConfig.md`
+- `docs/components/tasks/Task_Management.md`
+- `docs/components/port/Port.md`
+- `docs/components/tests/task_manager.md`
+
+Generate the API reference with Doxygen:
+
+```bash
+doxygen Doxyfile
+```
+
+The generated HTML lives in `docs/doxygen/html/`.
 
 ## Example entry points
 
@@ -105,6 +124,16 @@ Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before
 - Keep abstractions small and readable.
 - Avoid introducing API changes without updating examples and docs.
 - Preserve the RTOS-agnostic boundaries between `port/`, `core/`, and `examples/`.
+
+### Documentation standard
+
+- Use Doxygen block comments for every public function, struct, enum, and typedef.
+- Start each public item with a one-line `@brief`.
+- Document parameters with `@param[in]`, `@param[out]`, or `@param[in,out]` as appropriate.
+- Document return values with `@return`.
+- Use `@note`, `@warning`, `@deprecated`, and `@see` when they add real value.
+- Keep public-header comments as the source of truth; update them whenever behavior changes.
+- Regenerate the Doxygen output whenever public APIs, contracts, or examples change.
 
 ## License
 

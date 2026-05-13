@@ -1,8 +1,7 @@
 # Component Docs
 
-- [Test docs](tests/index.md)
+- [Task Management](tasks/Task_Management.md)
+- [Port Layer](port/Port.md)
+- [Task Manager Tests](tests/task_manager.md)
 
-## Scope
-
-Component docs explain how each module behaves and how contributors should think
-about it.
+These pages explain the main runtime modules and their regression coverage.

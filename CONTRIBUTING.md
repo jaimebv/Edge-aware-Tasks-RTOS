@@ -84,6 +84,20 @@ At minimum, update the relevant docs when you change:
 
 If the project adds a new workflow, document it in plain language.
 
+### Doxygen standard
+
+This repository uses Doxygen comments for production documentation.
+
+- Document every public function, struct, enum, typedef, and exported macro in the header where it is declared.
+- Use a `@brief` line first, then add concise detail only when the contract needs it.
+- Use `@param[in]`, `@param[out]`, and `@param[in,out]` consistently.
+- Use `@return` for every function that returns a value.
+- Add `@note`, `@warning`, `@deprecated`, and `@see` only when they clarify the contract.
+- Keep wording precise, technical, and stable; do not write conversational prose in API comments.
+- Treat the header comment as the canonical contract and keep implementation comments consistent with it.
+- When you change a public API, update the Doxygen comment, the implementation, tests, README guidance, and the generated docs workflow together.
+- Regenerate the docs with `doxygen Doxyfile` before merging any change that touches public APIs or user-facing behavior.
+
 ## Generated files and noise
 
 - Do not commit build artifacts.
