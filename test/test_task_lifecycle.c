@@ -7,7 +7,10 @@
  *
  * Coverage goals:
  * - validate null / invalid inputs
+ * - create a single task and verify teardown
  * - create local and paired edge tasks
+ * - soak the runtime registry with many live tasks
+ * - repeat create/delete churn to expose reuse bugs
  * - exercise runtime accessor helpers
  * - force runtime registry expansion with > 4 live pair runtimes
  * - cover client-only destroy and full pair teardown
@@ -24,7 +27,7 @@
 #include "core/task_manager.h"
 #include "port/port_rtos.h"
 
-#define TEST_PAIR_COUNT          5U
+#define TEST_PAIR_COUNT          6U
 #define TEST_QUEUE_DEPTH         1U
 #define TEST_MESSAGE_SIZE        sizeof(int)
 #define TEST_PRIORITY            2U
@@ -51,6 +54,7 @@ static const char *const kPairBaseNames[TEST_PAIR_COUNT] = {
     "TL2",
     "TL3",
     "TL4",
+    "TL5",
 };
 
 static const char *const kLocalBaseName = "TLOC";
@@ -60,8 +64,10 @@ static volatile bool g_pair_roundtrip[TEST_PAIR_COUNT];
 static volatile int g_pair_reply[TEST_PAIR_COUNT];
 static volatile int g_pair_client_index[TEST_PAIR_COUNT];
 static volatile int g_pair_server_index[TEST_PAIR_COUNT];
+static volatile uint32_t g_pair_runtime_id[TEST_PAIR_COUNT];
 static volatile bool g_local_ready;
 static volatile int g_local_index;
+static volatile uint32_t g_local_runtime_id;
 static volatile uint32_t g_pass_count;
 static volatile uint32_t g_fail_count;
 static volatile edge_task_creation_failure_reason_t g_forced_creation_failure_reason = EDGE_TASK_CREATION_FAILURE_NONE;
@@ -82,10 +88,16 @@ static void set_creation_failure_reason(edge_task_creation_failure_reason_t reas
 static void reset_runtime_indices(void)
 {
     for (size_t i = 0; i < TEST_PAIR_COUNT; ++i) {
+        g_pair_ready[i] = false;
+        g_pair_roundtrip[i] = false;
+        g_pair_reply[i] = 0;
         g_pair_client_index[i] = -1;
         g_pair_server_index[i] = -1;
+        g_pair_runtime_id[i] = 0U;
     }
+    g_local_ready = false;
     g_local_index = -1;
+    g_local_runtime_id = 0U;
 }
 
 static void pass(const char *name)
@@ -266,6 +278,7 @@ static void pair_client_task(void *pvParameters)
         g_pair_ready[slot] = true;
         g_pair_client_index[slot] = own_index;
         g_pair_server_index[slot] = peer_index;
+        g_pair_runtime_id[slot] = edge_task_pair_id(runtime);
     }
     assert_runtime_accessors(runtime, false);
 
@@ -387,6 +400,7 @@ static void local_task(void *pvParameters)
     eaPort_Delay_Milliseconds(100U);
     g_local_ready = true;
     g_local_index = local_index;
+    g_local_runtime_id = edge_task_pair_id(runtime);
     assert_runtime_accessors(runtime, true);
 
     expect_true("local task index", local_index >= 0, "local index not found");
@@ -443,6 +457,73 @@ static bool create_local_task(const char *base_name)
                TEST_LOCAL_WCET);
 
     return result.failure_reason == EDGE_TASK_CREATION_FAILURE_NONE;
+}
+
+static void reset_pair_slot_observations(size_t slot)
+{
+    if (slot >= TEST_PAIR_COUNT) {
+        return;
+    }
+
+    g_pair_ready[slot] = false;
+    g_pair_roundtrip[slot] = false;
+    g_pair_reply[slot] = 0;
+    g_pair_client_index[slot] = -1;
+    g_pair_server_index[slot] = -1;
+    g_pair_runtime_id[slot] = 0U;
+}
+
+static void test_failed_queue_allocation(void)
+{
+    const size_t baseline = get_num_monitored_tasks();
+    const edge_task_pair_spec_t huge_spec = {
+        .queue_depth = 4096U,
+        .message_size = 4096U,
+    };
+    edge_task_creation_result_t result = CreateEATaskPinnedToCoreEx(
+        "QFAIL",
+        TEST_PRIORITY,
+        pair_client_task,
+        pair_server_task,
+        TEST_CLIENT_STACK,
+        TEST_SERVER_STACK,
+        TEST_CORE_ID,
+        ENRICHED,
+        TEST_MAE2EL_MS,
+        TEST_DELAY_SENSITIVITY,
+        TEST_ENERGY_SENSITIVITY,
+        LOCAL_EXECUTION,
+        &huge_spec,
+        "127.0.0.1",
+        TEST_PERIOD_MS,
+        TEST_CLIENT_WCET,
+        TEST_SERVER_WCET);
+
+    expect_true("queue allocation failure reason",
+                result.failure_reason == EDGE_TASK_CREATION_FAILURE_QUEUE_CLIENT ||
+                result.failure_reason == EDGE_TASK_CREATION_FAILURE_QUEUE_SERVER,
+                edge_task_creation_failure_reason_to_string(result.failure_reason));
+    expect_true("queue allocation failure index", result.task_index < 0, "queue allocation should not return an index");
+    expect_true("queue allocation cleanup", get_num_monitored_tasks() == baseline, "queue allocation failure leaked monitor state");
+}
+
+static void test_single_task_creation(void)
+{
+    const size_t baseline = get_num_monitored_tasks();
+    task_snapshot_t snapshot = {0};
+
+    reset_runtime_indices();
+    expect_true("single local create", create_local_task(kLocalBaseName), "single local task creation failed");
+    expect_true("single local ready", wait_until(&g_local_ready, 5000U), "single local task did not start in time");
+    expect_true("single local runtime id", g_local_runtime_id != 0U, "single local runtime id should be non-zero");
+    expect_true("single local monitor count", get_num_monitored_tasks() == baseline + 1U, "single local task should add one monitor");
+    expect_true("single local snapshot valid", get_task_snapshot_by_index(g_local_index, &snapshot) && snapshot.valid, "single local snapshot invalid");
+    expect_true("single local snapshot name", strcmp(snapshot.name, "TLOC-lc-0") == 0, "single local snapshot name mismatch");
+    expect_true("single local destroy", edge_task_pair_destroy_by_task_index(g_local_index, EDGE_TASK_CLEANUP_CLIENT_ONLY) == 1, "single local destroy failed");
+    expect_true("single local removed", get_task_snapshot_by_index(g_local_index, &snapshot) == false, "single local task should be gone");
+    expect_true("single local cleanup", get_num_monitored_tasks() == baseline, "single local cleanup should restore baseline");
+
+    reset_runtime_indices();
 }
 
 static void test_strong_rollback_semantics(void)
@@ -660,7 +741,7 @@ static void test_invalid_and_null_paths(void)
     pass("null and invalid API paths");
 }
 
-static void test_monitoring_and_updates(void)
+static void test_snapshot_correctness_after_updates(void)
 {
     task_snapshot_t snapshot = {0};
     char local_name[32];
@@ -771,6 +852,14 @@ static void test_cleanup_paths(void)
     expect_true("pair4 client removed", get_task_snapshot_by_index(client_idx, &snapshot) == false, "pair4 client should be gone");
     expect_true("pair4 server removed", get_task_snapshot_by_index(server_idx, &snapshot) == false, "pair4 server should be gone");
 
+    /* Pair 5: extra soak slot cleanup by client index. */
+    client_idx = g_pair_client_index[5];
+    server_idx = g_pair_server_index[5];
+    expect_true("pair5 client index present", client_idx >= 0, "pair5 client index missing");
+    expect_true("pair5 full destroy by client index", edge_task_pair_destroy_by_task_index(client_idx, EDGE_TASK_CLEANUP_PAIR) == 1, "pair5 cleanup failed");
+    expect_true("pair5 client removed", get_task_snapshot_by_index(client_idx, &snapshot) == false, "pair5 client should be gone");
+    expect_true("pair5 server removed", get_task_snapshot_by_index(server_idx, &snapshot) == false, "pair5 server should be gone");
+
     local_idx = g_local_index;
     expect_true("local index present", local_idx >= 0, "local index missing");
     expect_true("local destroy by index", edge_task_pair_destroy_by_task_index(local_idx, EDGE_TASK_CLEANUP_CLIENT_ONLY) == 1, "local destroy failed");
@@ -779,43 +868,65 @@ static void test_cleanup_paths(void)
     pass("cleanup branch coverage");
 }
 
-void app_main(void)
+static void test_repeated_create_delete_cycles(void)
 {
-    char base_name[32];
+    const size_t cycle_count = 6U;
+    task_snapshot_t snapshot = {0};
+    uint32_t first_pair_id = 0U;
+    int first_client_index = -1;
+    int first_server_index = -1;
+
+    for (size_t cycle = 0; cycle < cycle_count; ++cycle) {
+        reset_pair_slot_observations(0U);
+        expect_true("cycle pair create", create_pair_task(kPairBaseNames[0], ENRICHED, LOCAL_EXECUTION), "cycle pair creation failed");
+        expect_true("cycle pair ready", wait_until(&g_pair_ready[0], 5000U), "cycle pair did not start in time");
+        expect_true("cycle pair roundtrip", wait_until(&g_pair_roundtrip[0], 5000U), "cycle pair roundtrip did not complete");
+        expect_true("cycle pair reply", g_pair_reply[0] == 1001, "cycle pair reply mismatch");
+        expect_true("cycle pair runtime id", g_pair_runtime_id[0] != 0U, "cycle pair runtime id should be non-zero");
+
+        if (cycle == 0U) {
+            first_pair_id = g_pair_runtime_id[0];
+            first_client_index = g_pair_client_index[0];
+            first_server_index = g_pair_server_index[0];
+        } else if (cycle == 1U) {
+            expect_true("runtime id changed after deletion", g_pair_runtime_id[0] != first_pair_id, "runtime id should change after recreate");
+            expect_true("client index reused after deletion", g_pair_client_index[0] == first_client_index, "client index should be reused after delete");
+            expect_true("server index reused after deletion", g_pair_server_index[0] == first_server_index, "server index should be reused after delete");
+        }
+
+        expect_true("cycle pair destroy", edge_task_pair_destroy_by_task_index(g_pair_client_index[0], EDGE_TASK_CLEANUP_PAIR) == 1, "cycle pair cleanup failed");
+        expect_true("cycle client removed", get_task_snapshot_by_index(g_pair_client_index[0], &snapshot) == false, "cycle client should be gone");
+        expect_true("cycle server removed", get_task_snapshot_by_index(g_pair_server_index[0], &snapshot) == false, "cycle server should be gone");
+        expect_true("cycle monitor cleanup", get_num_monitored_tasks() == 0U, "cycle cleanup should restore zero monitors");
+    }
+
+    pass("repeated create/delete cycles and runtime reuse");
+}
+
+static void test_live_soak_batch(void)
+{
     size_t i;
+    char base_name[32];
 
-    printf("=== Task lifecycle test harness ===\n");
-    task_manager_init();
     reset_runtime_indices();
-    set_creation_failure_reason(EDGE_TASK_CREATION_FAILURE_NONE);
 
-    test_invalid_and_null_paths();
-    test_strong_rollback_semantics();
-
-    /*
-     * Create the local task first so we also exercise the local creation branch.
-     * Its runtime will be kept alive until the cleanup phase.
-     */
     snprintf(base_name, sizeof(base_name), "%s", kLocalBaseName);
     expect_true("create local task", create_local_task(base_name), "local task creation failed");
 
-    /*
-     * Create five live task pairs before any cleanup. This intentionally forces
-     * the runtime registry to expand past its initial chunk size of four slots.
-     */
     for (i = 0; i < TEST_PAIR_COUNT; ++i) {
         expect_true("create pair task", create_pair_task(kPairBaseNames[i], ENRICHED, LOCAL_EXECUTION), "pair task creation failed");
     }
 
-    /* Wait until the tasks have actually started and produced their READY flags. */
     for (i = 0; i < TEST_PAIR_COUNT; ++i) {
         char ready_name[48];
         snprintf(ready_name, sizeof(ready_name), "pair-%u ready", (unsigned)i);
         expect_true(ready_name, wait_until((volatile bool *)&g_pair_ready[i], 5000U), "pair did not start in time");
+        expect_true("pair runtime id", g_pair_runtime_id[i] != 0U, "pair runtime id should be non-zero");
     }
-    expect_true("local ready", wait_until(&g_local_ready, 5000U), "local task did not start in time");
 
-    /* Prove the queue-based roundtrip happened for all pair tasks. */
+    expect_true("local ready", wait_until(&g_local_ready, 5000U), "local task did not start in time");
+    expect_true("local runtime id", g_local_runtime_id != 0U, "local runtime id should be non-zero");
+
     for (i = 0; i < TEST_PAIR_COUNT; ++i) {
         char roundtrip_name[48];
         snprintf(roundtrip_name, sizeof(roundtrip_name), "pair-%u roundtrip", (unsigned)i);
@@ -824,11 +935,28 @@ void app_main(void)
     }
 
     expect_true("monitored task count", get_num_monitored_tasks() == (TEST_PAIR_COUNT * 2U) + 1U, "unexpected number of monitored tasks");
+    pass("runtime registry soak batch created");
+}
 
-    test_monitoring_and_updates();
+void app_main(void)
+{
+    printf("=== Task lifecycle test harness ===\n");
+    task_manager_init();
+    reset_runtime_indices();
+    set_creation_failure_reason(EDGE_TASK_CREATION_FAILURE_NONE);
+
+    test_invalid_and_null_paths();
+    test_strong_rollback_semantics();
+
+    test_failed_queue_allocation();
+    test_single_task_creation();
+    test_live_soak_batch();
+    test_snapshot_correctness_after_updates();
     test_cleanup_paths();
 
     expect_true("all monitors cleared", get_num_monitored_tasks() == 0U, "monitor count should be zero after cleanup");
+    test_repeated_create_delete_cycles();
+    expect_true("all monitors cleared after churn", get_num_monitored_tasks() == 0U, "monitor count should return to zero after churn");
     pass("runtime registry expansion and cleanup complete");
 
     printf("=== Task lifecycle tests done: passes=%" PRIu32 " fails=%" PRIu32 " ===\n",
