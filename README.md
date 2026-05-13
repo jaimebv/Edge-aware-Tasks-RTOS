@@ -33,6 +33,7 @@ That structure makes the repo useful for studying edge-oriented workloads, deadl
 - `components/EEAA/include/` — public headers
 - `components/EEAA/src/` — component implementation
 - `components/EEAA/examples/` — runnable usage examples
+- `docs/` — long-form system, component, and test documentation
 - `src/main.c` — application entrypoint
 - `platformio.ini` — PlatformIO environment configuration
 
@@ -63,6 +64,15 @@ pio device monitor -p /dev/ttyUSB0 -b 115200
 ```
 
 ## Documentation
+
+Read the human-facing documentation hub:
+
+- `docs/index.md`
+- `docs/system/System_Architecture.md`
+- `docs/system/SystemConfig.md`
+- `docs/components/tasks/Task_Management.md`
+- `docs/components/port/Port.md`
+- `docs/components/tests/task_manager.md`
 
 Generate the API reference with Doxygen:
 
