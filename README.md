@@ -97,6 +97,15 @@ The task manager provides helpers for:
 - capturing task snapshots for monitoring and analysis
 - using a consistent naming and execution-site model across tasks
 
+## Documentation
+
+For higher-level guidance, start with the markdown pages in `docs/`:
+
+- `docs/index.md`
+- `docs/components/tests/index.md`
+- `docs/components/tests/Shared_Test_Helpers.md`
+- `docs/components/tests/Task_Lifecycle_Test.md`
+
 ## Contributing
 
 Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
