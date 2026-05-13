@@ -33,6 +33,7 @@ That structure makes the repo useful for studying edge-oriented workloads, deadl
 - `components/EEAA/include/` — public headers
 - `components/EEAA/src/` — component implementation
 - `components/EEAA/examples/` — runnable usage examples
+- `docs/` — long-form system, test, and workflow documentation
 - `src/main.c` — application entrypoint
 - `platformio.ini` — PlatformIO environment configuration
 
@@ -76,6 +77,15 @@ The task manager provides helpers for:
 - recording task identity and relationship metadata
 - capturing task snapshots for monitoring and analysis
 - using a consistent naming and execution-site model across tasks
+
+## Documentation
+
+For higher-level guidance, start with the markdown pages in `docs/`:
+
+- `docs/index.md`
+- `docs/components/tests/index.md`
+- `docs/components/tests/Shared_Test_Helpers.md`
+- `docs/components/tests/Task_Lifecycle_Test.md`
 
 ## Contributing
 
