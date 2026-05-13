@@ -1,51 +1,46 @@
-# Edge-aware Tasks RTOS Documentation
+# Edge-aware Tasks RTOS Documentation Hub
 
-Welcome to the project documentation for **Edge-aware Tasks RTOS**.
+This documentation set is the user-facing and contributor-facing reference for the project.
+It is intentionally broader than the API reference: it explains the architecture,
+configuration, module responsibilities, test strategy, and the way the pieces fit together.
 
-This repo provides:
+## Start here
 
-- a portable RTOS abstraction layer
-- an EEAA task-manager API for paired tasks
-- monitoring helpers for snapshots, metrics, and runtime accessors
-- board-specific support for the ESP32 target
-- runnable examples and hardware-backed tests
+- [System docs](system/index.md)
+- [Component docs](components/index.md)
+- [System Architecture](system/System_Architecture.md)
+- [System Configuration](system/SystemConfig.md)
+- [Task Management](components/tasks/Task_Management.md)
+- [Port Layer](components/port/Port.md)
+- [Task Manager Tests](components/tests/task_manager.md)
 
-## Documentation sources
+## What this documentation is for
 
-The API reference is generated from:
+- help users understand what the framework does
+- help contributors change the system without breaking its architecture
+- show the information flow across modules
+- explain the production assumptions behind the task manager, ports, and tests
+- act as the high-level companion to the Doxygen API reference
 
-- `components/EEAA/include/`
-- `components/EEAA/src/`
-- `components/EEAA/examples/`
-- `src/`
+## How the repository documentation is organized
 
-The project-level guides are also included:
+- **Doxygen reference**: generated from headers and module comments with `doxygen Doxyfile`
+- **System docs**: long-form explanations of architecture and configuration
+- **Component docs**: detailed module guides for task management, ports, and tests
+- **Contributor docs**: rules for style, workflow, and documentation discipline
 
-- `README.md`
-- `CONTRIBUTING.md`
+## Recommended reading order
 
-## Generate the docs
+1. [System Architecture](system/System_Architecture.md)
+2. [System Configuration](system/SystemConfig.md)
+3. [Port Layer](components/port/Port.md)
+4. [Task Management](components/tasks/Task_Management.md)
+5. [Task Manager Tests](components/tests/task_manager.md)
+6. Doxygen API reference generated from the public headers
 
-```bash
-doxygen Doxyfile
-```
+## Notes for maintainers
 
-The HTML output is written to:
-
-```text
-docs/doxygen/html/
-```
-
-## Documentation policy
-
-- Public headers carry the canonical API reference.
-- New or changed public APIs must be documented in Doxygen style.
-- Behavior changes must update both code comments and contributor guidance.
-- Examples and tests should reflect the documented contract.
-
-## Module map
-
-- `core/task_manager.h` — task lifecycle, runtime accessors, snapshots, cleanup
-- `port/port_rtos_freertos.h` — FreeRTOS-backed portable RTOS layer
-- `port/port_board_esp32.h` — ESP32-specific board and timing helpers
-- `interfaces/platform_interface.h` — platform-neutral timing interface
+- When public behavior changes, update the markdown docs and the Doxygen comments together.
+- Keep examples aligned with the docs.
+- Prefer precise technical writing over marketing language.
+- Treat these pages as living documentation: they should describe the current implementation, not an aspirational design.

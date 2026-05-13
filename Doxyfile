@@ -7,7 +7,7 @@ CREATE_SUBDIRS         = YES
 
 INPUT                  = README.md \
                          CONTRIBUTING.md \
-                         docs/index.md \
+                         docs \
                          src \
                          components/EEAA/include \
                          components/EEAA/src \
