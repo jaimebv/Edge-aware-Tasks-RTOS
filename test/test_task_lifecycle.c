@@ -25,6 +25,7 @@
 #include <inttypes.h>
 
 #include "core/task_manager.h"
+#include "test_helpers.h"
 #include "port/port_rtos.h"
 
 #define TEST_PAIR_COUNT          6U
@@ -68,8 +69,6 @@ static volatile uint32_t g_pair_runtime_id[TEST_PAIR_COUNT];
 static volatile bool g_local_ready;
 static volatile int g_local_index;
 static volatile uint32_t g_local_runtime_id;
-static volatile uint32_t g_pass_count;
-static volatile uint32_t g_fail_count;
 static volatile edge_task_creation_failure_reason_t g_forced_creation_failure_reason = EDGE_TASK_CREATION_FAILURE_NONE;
 
 bool edge_task_manager_test_hook_should_fail_creation(
@@ -98,29 +97,6 @@ static void reset_runtime_indices(void)
     g_local_ready = false;
     g_local_index = -1;
     g_local_runtime_id = 0U;
-}
-
-static void pass(const char *name)
-{
-    ++g_pass_count;
-    printf("TEST PASSED: %s\n", name);
-}
-
-static void fail(const char *name, const char *detail)
-{
-    ++g_fail_count;
-    printf("TEST FAILED: %s (%s)\n", name, detail ? detail : "no detail");
-}
-
-static bool expect_true(const char *name, bool ok, const char *detail)
-{
-    if (!ok) {
-        fail(name, detail);
-        return false;
-    }
-
-    pass(name);
-    return true;
 }
 
 static bool wait_until(volatile bool *flag, uint32_t timeout_ms)
@@ -942,6 +918,7 @@ void app_main(void)
 {
     printf("=== Task lifecycle test harness ===\n");
     task_manager_init();
+    test_helpers_reset_counts();
     reset_runtime_indices();
     set_creation_failure_reason(EDGE_TASK_CREATION_FAILURE_NONE);
 
@@ -960,8 +937,8 @@ void app_main(void)
     pass("runtime registry expansion and cleanup complete");
 
     printf("=== Task lifecycle tests done: passes=%" PRIu32 " fails=%" PRIu32 " ===\n",
-           (uint32_t)g_pass_count,
-           (uint32_t)g_fail_count);
+           test_helpers_pass_count(),
+           test_helpers_fail_count());
 
     while (1) {
         eaPort_Delay_Milliseconds(5000U);
