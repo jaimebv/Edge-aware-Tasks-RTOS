@@ -28,7 +28,6 @@
 #include "test_helpers.h"
 #include "port/port_rtos.h"
 
-void test_port_board_run(void);
 
 #define TEST_PAIR_COUNT          6U
 #define TEST_QUEUE_DEPTH         1U
@@ -942,5 +941,4 @@ void app_main(void)
            test_helpers_pass_count(),
            test_helpers_fail_count());
 
-    test_port_board_run();
 }

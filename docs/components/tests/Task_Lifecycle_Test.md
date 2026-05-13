@@ -28,6 +28,6 @@ not just at compile time.
 
 ## Runner note
 
-On this branch the lifecycle harness also invokes the board test suite after it
-prints its own summary so the ESP-IDF test firmware can keep a single app entry
-point while still exercising the new `test/test_port_board.c` coverage.
+The lifecycle harness is isolated from the board harness.
+Run `test/test_task_lifecycle.c` on its own when validating task-manager
+changes; run `test/test_port_board.c` separately for PORT changes.

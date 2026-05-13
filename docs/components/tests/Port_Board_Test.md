@@ -38,5 +38,5 @@ and observed from serial output, not treated as a compile-only check.
 
 ## Runner note
 
-The current ESP-IDF test firmware keeps a single `app_main` in the lifecycle
-harness, which invokes this port-board suite after the lifecycle run finishes.
+The port-board harness is isolated from the lifecycle harness.
+Run `test/test_port_board.c` by itself when validating PORT-module changes.
