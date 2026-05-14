@@ -65,22 +65,7 @@ pio device monitor -p /dev/ttyUSB0 -b 115200
 
 ## Documentation
 
-Read the human-facing documentation hub:
-
-- `docs/index.md`
-- `docs/system/System_Architecture.md`
-- `docs/system/SystemConfig.md`
-- `docs/components/tasks/Task_Management.md`
-- `docs/components/port/Port.md`
-- `docs/components/tests/task_manager.md`
-
-Generate the API reference with Doxygen:
-
-```bash
-doxygen Doxyfile
-```
-
-The generated HTML lives in `docs/doxygen/html/`.
+Read the documentation hub in /docs:
 
 ## Example entry points
 
@@ -88,53 +73,13 @@ The generated HTML lives in `docs/doxygen/html/`.
 - `components/EEAA/examples/port/port_rtos_example.c` — RTOS abstraction demos
 - `components/EEAA/examples/port/port_board_example.c` — board abstraction demo
 
-## Working with the task manager
-
-The task manager provides helpers for:
-
-- creating task pairs with shared communication queues
-- recording task identity and relationship metadata
-- capturing task snapshots for monitoring and analysis
-- using a consistent naming and execution-site model across tasks
-
-## Documentation
-
-For higher-level guidance, start with the markdown pages in `docs/`:
-
-- `docs/index.md`
-- `docs/components/tests/index.md`
-- `docs/components/tests/Shared_Test_Helpers.md`
-- `docs/components/tests/Task_Lifecycle_Test.md`
 
 ## Contributing
 
 Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
-### Suggested workflow
 
-1. Open an issue for a bug, idea, or documentation gap.
-2. Create a focused branch.
-3. Keep changes small and reviewable.
-4. Update code and docs together when behavior changes.
-5. Verify builds before opening a pull request.
-
-### Coding standards
-
-- Prefer clear, explicit task and component names.
-- Keep abstractions small and readable.
-- Avoid introducing API changes without updating examples and docs.
-- Preserve the RTOS-agnostic boundaries between `port/`, `core/`, and `examples/`.
-
-### Documentation standard
-
-- Use Doxygen block comments for every public function, struct, enum, and typedef.
-- Start each public item with a one-line `@brief`.
-- Document parameters with `@param[in]`, `@param[out]`, or `@param[in,out]` as appropriate.
-- Document return values with `@return`.
-- Use `@note`, `@warning`, `@deprecated`, and `@see` when they add real value.
-- Keep public-header comments as the source of truth; update them whenever behavior changes.
-- Regenerate the Doxygen output whenever public APIs, contracts, or examples change.
-
+  
 ## License
 
 See `LICENSE` for licensing details.
