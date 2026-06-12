@@ -410,6 +410,14 @@ int edge_task_pair_task_index(const edge_task_pair_runtime_t *runtime);
 int edge_task_pair_peer_index(const edge_task_pair_runtime_t *runtime);
 
 /**
+ * @brief Get the borrowed runtime pointer for a monitored task index.
+ *
+ * Returns NULL when the index is invalid or inactive. The pointer is owned by
+ * the task manager and remains valid only while the runtime is active.
+ */
+const edge_task_pair_runtime_t *edge_task_pair_runtime_by_task_index(int taskIndex);
+
+/**
  * @brief Release a runtime pointer owned by the task manager.
  *
  * Only valid while the runtime is still active or during teardown code that
@@ -503,6 +511,24 @@ unsigned get_task_OE2EL(int taskIndex);
  * @return WCET value, or 0 when invalid.
  */
 unsigned get_task_WCET(int taskIndex);
+
+/**
+ * @brief Update the host label for a monitored task and its runtime record.
+ *
+ * @param[in] taskIndex Monitored task index.
+ * @param[in] host Null-terminated host label.
+ * @return true when the task is active and the host was updated.
+ */
+bool edge_task_pair_set_host_by_index(int taskIndex, const char *host);
+
+/**
+ * @brief Update the execution site for a monitored task.
+ *
+ * @param[in] taskIndex Monitored task index.
+ * @param[in] exec_site New execution site.
+ * @return true when the task is active and the execution site was updated.
+ */
+bool edge_task_pair_set_exec_site_by_index(int taskIndex, edge_task_execution_site_t exec_site);
 
 
 /*===========================================================================*/

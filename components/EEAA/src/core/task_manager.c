@@ -79,14 +79,12 @@ static edge_task_runtime_slot_t *runtime_slot_from_runtime(const edge_task_pair_
     return (edge_task_runtime_slot_t *)((uint8_t *)runtime - offsetof(edge_task_runtime_slot_t, runtime));
 }
 
-static edge_task_pair_runtime_t *runtime_from_task_index(int taskIndex)
+static edge_task_pair_runtime_t *runtime_from_task_index_locked(int taskIndex)
 {
     if (taskIndex < 0) {
         return NULL;
     }
 
-    runtime_registry_init();
-    eaPort_Mutex_Enter(runtimeRegistryMux);
     for (edge_task_runtime_chunk_t *chunk = runtimeChunks; chunk != NULL; chunk = chunk->next) {
         for (size_t i = 0; i < EDGE_TASK_RUNTIME_CHUNK_SIZE; ++i) {
             edge_task_runtime_slot_t *slot = &chunk->slots[i];
@@ -95,13 +93,20 @@ static edge_task_pair_runtime_t *runtime_from_task_index(int taskIndex)
             }
 
             if (slot->runtime.client_index == taskIndex || slot->runtime.server_index == taskIndex) {
-                eaPort_Mutex_Exit(runtimeRegistryMux);
                 return &slot->runtime;
             }
         }
     }
-    eaPort_Mutex_Exit(runtimeRegistryMux);
     return NULL;
+}
+
+static edge_task_pair_runtime_t *runtime_from_task_index(int taskIndex)
+{
+    runtime_registry_init();
+    eaPort_Mutex_Enter(runtimeRegistryMux);
+    edge_task_pair_runtime_t *runtime = runtime_from_task_index_locked(taskIndex);
+    eaPort_Mutex_Exit(runtimeRegistryMux);
+    return runtime;
 }
 
 static void runtime_mark_retired(edge_task_pair_runtime_t *runtime)
@@ -682,6 +687,11 @@ const char *edge_task_pair_host_name(const edge_task_pair_runtime_t *runtime)
     return runtime ? runtime->host_name : NULL;
 }
 
+const edge_task_pair_runtime_t *edge_task_pair_runtime_by_task_index(int taskIndex)
+{
+    return runtime_from_task_index(taskIndex);
+}
+
 edge_task_pair_role_t edge_task_pair_role(const edge_task_pair_runtime_t *runtime)
 {
     return runtime ? runtime->role : EDGE_TASK_PAIR_LOCAL;
@@ -700,6 +710,62 @@ int edge_task_pair_task_index(const edge_task_pair_runtime_t *runtime)
 int edge_task_pair_peer_index(const edge_task_pair_runtime_t *runtime)
 {
     return runtime ? runtime->server_index : -1;
+}
+
+static bool update_monitor_host_locked(int taskIndex, const char *host)
+{
+    if (host == NULL || host[0] == '\0') {
+        return false;
+    }
+
+    eaPort_Mutex_Enter(monitoredTasksMux);
+    if (monitor_index_valid_locked(taskIndex)) {
+        strncpy(monitoredTaskCold[taskIndex].host, host, CONFIG_EA_MAX_TASK_NAME_LEN - 1U);
+        monitoredTaskCold[taskIndex].host[CONFIG_EA_MAX_TASK_NAME_LEN - 1U] = '\0';
+        eaPort_Mutex_Exit(monitoredTasksMux);
+        return true;
+    }
+    eaPort_Mutex_Exit(monitoredTasksMux);
+    return false;
+}
+
+static bool update_monitor_exec_site_locked(int taskIndex, edge_task_execution_site_t exec_site)
+{
+    bool updated = false;
+
+    eaPort_Mutex_Enter(monitoredTasksMux);
+    if (monitor_index_valid_locked(taskIndex)) {
+        monitoredTaskCold[taskIndex].exec_site = exec_site;
+        updated = true;
+    }
+    eaPort_Mutex_Exit(monitoredTasksMux);
+
+    return updated;
+}
+
+bool edge_task_pair_set_host_by_index(int taskIndex, const char *host)
+{
+    bool updated = update_monitor_host_locked(taskIndex, host);
+
+    if (host == NULL || host[0] == '\0') {
+        return false;
+    }
+
+    runtime_registry_init();
+    eaPort_Mutex_Enter(runtimeRegistryMux);
+    edge_task_pair_runtime_t *runtime = runtime_from_task_index_locked(taskIndex);
+    if (runtime != NULL) {
+        snprintf(runtime->host_name, sizeof(runtime->host_name), "%s", host);
+        updated = true;
+    }
+    eaPort_Mutex_Exit(runtimeRegistryMux);
+
+    return updated;
+}
+
+bool edge_task_pair_set_exec_site_by_index(int taskIndex, edge_task_execution_site_t exec_site)
+{
+    return update_monitor_exec_site_locked(taskIndex, exec_site);
 }
 
 static void clear_runtime_monitor_entries(int client_index, int server_index, bool include_server)
