@@ -28,6 +28,8 @@
 #include "test_helpers.h"
 #include "port/port_rtos.h"
 
+void test_offloader_policy_suite(void);
+
 
 #define TEST_PAIR_COUNT          6U
 #define TEST_QUEUE_DEPTH         1U
@@ -968,6 +970,7 @@ void app_main(void)
     reset_runtime_indices();
     set_creation_failure_reason(EDGE_TASK_CREATION_FAILURE_NONE);
 
+    test_offloader_policy_suite();
     test_invalid_and_null_paths();
     test_strong_rollback_semantics();
 
