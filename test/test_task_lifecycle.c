@@ -29,6 +29,7 @@
 #include "port/port_rtos.h"
 
 void test_offloader_policy_suite(void);
+void test_offloader_controller_suite(void);
 
 
 #define TEST_PAIR_COUNT          6U
@@ -971,6 +972,7 @@ void app_main(void)
     set_creation_failure_reason(EDGE_TASK_CREATION_FAILURE_NONE);
 
     test_offloader_policy_suite();
+    test_offloader_controller_suite();
     test_invalid_and_null_paths();
     test_strong_rollback_semantics();
 
