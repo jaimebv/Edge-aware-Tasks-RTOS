@@ -2,6 +2,7 @@
 
 - [Test Docs](tests/index.md)
 - [Task Management](tasks/Task_Management.md)
+- [Offloader Scope Lock](offloader/Offloader.md)
 - [Port Layer](port/Port.md)
 - [Port-RTOS Test Harness](tests/Port_Rtos_Test.md)
 - [Task Manager Tests](tests/task_manager.md)
