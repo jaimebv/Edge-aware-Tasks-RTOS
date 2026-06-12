@@ -2,6 +2,7 @@
 
 - [Shared Test Helpers](Shared_Test_Helpers.md)
 - [Port-RTOS Test Harness](Port_Rtos_Test.md)
+- [Offloader Test Harness](Offloader_Test.md)
 - [Task Lifecycle Test Harness](Task_Lifecycle_Test.md)
 - [Port-board Test Harness](Port_Board_Test.md)
 

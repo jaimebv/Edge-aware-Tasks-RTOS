@@ -61,6 +61,9 @@ The system is organized in layers:
 Application / tests / examples
         |
         v
+Offloader controller (client routing)
+        |
+        v
 EEAA task manager (core/task_manager)
         |
         +--> Monitoring store (hot + cold state)
@@ -84,6 +87,12 @@ ESP32 + FreeRTOS + hardware
   - create task pairs or local tasks
   - inspect snapshots and metrics
   - validate cleanup and reuse
+
+- **Offloader controller**
+  - reads task-manager snapshots for client-side EA tasks
+  - evaluates a routing policy for the client payload
+  - applies LOCAL or REMOTE routing through task-manager helpers only
+  - keeps route mutation separate from the task manager implementation
 
 - **EEAA task manager**
   - owns task creation policy
@@ -281,6 +290,17 @@ caller -> task_manager destroy API -> runtime registry cleanup
 ```
 
 Cleanup is intentionally multi-step because each resource has distinct ownership.
+
+### 6.5 Offloader routing flow
+
+```text
+task_manager snapshots -> offloader candidate scan -> policy evaluation
+                        -> task_manager route mutation
+```
+
+The offloader only considers client segments when it scans for candidates.
+The controller then writes the resulting route back through the task manager so
+the local server half or the remote host path can be selected consistently.
 
 ## 7. Why edge tasks matter
 

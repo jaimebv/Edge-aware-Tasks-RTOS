@@ -11,8 +11,10 @@ configuration, module responsibilities, test strategy, and the way the pieces fi
 - [System Architecture](system/System_Architecture.md)
 - [System Configuration](system/SystemConfig.md)
 - [Task Management](components/tasks/Task_Management.md)
+- [Offloader Controller](components/offloader/Offloader.md)
 - [Port Layer](components/port/Port.md)
 - [Port-RTOS Test Harness](components/tests/Port_Rtos_Test.md)
+- [Offloader Test Harness](components/tests/Offloader_Test.md)
 - [Task Manager Tests](components/tests/task_manager.md)
 
 ## What this documentation is for
@@ -36,9 +38,11 @@ configuration, module responsibilities, test strategy, and the way the pieces fi
 2. [System Configuration](system/SystemConfig.md)
 3. [Port Layer](components/port/Port.md)
 4. [Port-RTOS Test Harness](components/tests/Port_Rtos_Test.md)
-5. [Task Management](components/tasks/Task_Management.md)
-6. [Task Manager Tests](components/tests/task_manager.md)
-7. Doxygen API reference generated from the public headers
+5. [Offloader Controller](components/offloader/Offloader.md)
+6. [Task Management](components/tasks/Task_Management.md)
+7. [Offloader Test Harness](components/tests/Offloader_Test.md)
+8. [Task Manager Tests](components/tests/task_manager.md)
+9. Doxygen API reference generated from the public headers
 
 ## Notes for maintainers
 
