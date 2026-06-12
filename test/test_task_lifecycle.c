@@ -28,6 +28,9 @@
 #include "test_helpers.h"
 #include "port/port_rtos.h"
 
+void test_offloader_policy_suite(void);
+void test_offloader_controller_suite(void);
+
 
 #define TEST_PAIR_COUNT          6U
 #define TEST_QUEUE_DEPTH         1U
@@ -915,6 +918,51 @@ static void test_live_soak_batch(void)
     pass("runtime registry soak batch created");
 }
 
+static void test_route_mutation_hooks(void)
+{
+    const int client_idx = g_pair_client_index[0];
+    const int server_idx = g_pair_server_index[0];
+    const edge_task_pair_runtime_t *client_runtime = NULL;
+    const edge_task_pair_runtime_t *server_runtime = NULL;
+    char original_host[CONFIG_EA_MAX_TASK_NAME_LEN];
+    const char *original_site = NULL;
+    const char *new_host = "edge-router";
+
+    expect_true("route hook client index", client_idx >= 0, "route hook client index missing");
+    expect_true("route hook server index", server_idx >= 0, "route hook server index missing");
+    expect_true("route hook invalid host index", edge_task_pair_set_host_by_index(-1, new_host) == false, "invalid host index should fail");
+    expect_true("route hook null host", edge_task_pair_set_host_by_index(client_idx, NULL) == false, "null host should fail");
+    expect_true("route hook invalid exec index", edge_task_pair_set_exec_site_by_index(-1, REMOTE_EXECUTION) == false, "invalid exec site index should fail");
+
+    client_runtime = edge_task_pair_runtime_by_task_index(client_idx);
+    server_runtime = edge_task_pair_runtime_by_task_index(server_idx);
+    expect_true("route hook client runtime", client_runtime != NULL, "client runtime missing");
+    expect_true("route hook server runtime", server_runtime != NULL, "server runtime missing");
+    expect_true("route hook shared runtime", client_runtime == server_runtime, "client/server runtime should be shared");
+
+    original_site = get_task_ex_site_by_index(client_idx);
+    expect_true("route hook original site", original_site != NULL, "original execution site missing");
+    expect_true("route hook original host", edge_task_pair_host_name(client_runtime) != NULL, "original host missing");
+    snprintf(original_host, sizeof(original_host), "%s", edge_task_pair_host_name(client_runtime));
+
+    expect_true("route hook set host", edge_task_pair_set_host_by_index(client_idx, new_host), "host update failed");
+    client_runtime = edge_task_pair_runtime_by_task_index(client_idx);
+    expect_true("route hook host updated", strcmp(edge_task_pair_host_name(client_runtime), new_host) == 0, "runtime host did not update");
+
+    expect_true("route hook set remote", edge_task_pair_set_exec_site_by_index(client_idx, REMOTE_EXECUTION), "remote exec site update failed");
+    expect_true("route hook remote site", strcmp(get_task_ex_site_by_index(client_idx), "REMOTE_EXECUTION") == 0, "exec site did not switch to remote");
+
+    expect_true("route hook restore local site", edge_task_pair_set_exec_site_by_index(client_idx, LOCAL_EXECUTION), "local exec site restore failed");
+    expect_true("route hook local site", strcmp(get_task_ex_site_by_index(client_idx), "LOCAL_EXECUTION") == 0, "exec site did not restore to local");
+
+    expect_true("route hook restore host", edge_task_pair_set_host_by_index(client_idx, original_host), "host restore failed");
+    client_runtime = edge_task_pair_runtime_by_task_index(client_idx);
+    expect_true("route hook host restored", strcmp(edge_task_pair_host_name(client_runtime), original_host) == 0, "runtime host did not restore");
+    expect_true("route hook original site stable", strcmp(get_task_ex_site_by_index(client_idx), original_site) == 0, "original site should stay stable");
+
+    pass("route mutation hooks");
+}
+
 void app_main(void)
 {
     printf("=== Task lifecycle test harness ===\n");
@@ -923,12 +971,15 @@ void app_main(void)
     reset_runtime_indices();
     set_creation_failure_reason(EDGE_TASK_CREATION_FAILURE_NONE);
 
+    test_offloader_policy_suite();
+    test_offloader_controller_suite();
     test_invalid_and_null_paths();
     test_strong_rollback_semantics();
 
     test_failed_queue_allocation();
     test_single_task_creation();
     test_live_soak_batch();
+    test_route_mutation_hooks();
     test_snapshot_correctness_after_updates();
     test_cleanup_paths();
 

@@ -232,7 +232,19 @@ It contains:
 - **exec_site**: local or remote execution mode
 - **delay_weight / energy_weight**: tuning weights used by the model
 
-### 5.3 Why the split matters
+### 5.3 Route mutation helpers
+
+The task manager also exposes narrow route-mutation helpers for the offloader
+controller:
+
+- `edge_task_pair_runtime_by_task_index()`
+- `edge_task_pair_set_host_by_index()`
+- `edge_task_pair_set_exec_site_by_index()`
+
+These helpers let the controller update routing metadata without reaching into
+the runtime registry directly.
+
+### 5.4 Why the split matters
 
 The split keeps the fast path small while preserving rich metadata.
 That is a common embedded design pattern:
@@ -241,7 +253,7 @@ That is a common embedded design pattern:
 - keep descriptive state elsewhere
 - link both using an index and a stable pair ID
 
-### 5.4 Relating hot and cold state
+### 5.5 Relating hot and cold state
 
 The hot and cold structures are matched by:
 
