@@ -32,13 +32,25 @@ typedef enum {
 } edge_offloader_route_t;
 
 /**
+ * @brief Controller execution mode.
+ */
+typedef enum {
+    EDGE_OFFLOADER_MODE_PER_TASK = 0,
+    EDGE_OFFLOADER_MODE_BATCH = 1,
+} edge_offloader_mode_t;
+
+/**
  * @brief Static controller configuration.
  *
  * The labels are used when applying the route decision back into the task
- * manager.
+ * manager. When the controller is enabled, both labels must be non-empty.
+ * `mode` selects the per-task or batch/vector execution path.
+ * `control_period_ms` is a cadence hint for the caller or scheduler; the
+ * controller does not run its own timer.
  */
 typedef struct {
     bool enabled;
+    edge_offloader_mode_t mode;
     uint32_t control_period_ms;
     const char *local_host_label;
     const char *remote_host_label;

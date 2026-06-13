@@ -15,28 +15,38 @@ typedef struct {
 
 static edge_offloader_state_t g_offloader_state = {0};
 
+static bool offloader_label_valid(const char *label)
+{
+    return label != NULL && label[0] != '\0';
+}
+
+static bool offloader_config_ready(void)
+{
+    return g_offloader_state.config.enabled &&
+           g_offloader_state.config.control_period_ms > 0U &&
+           offloader_label_valid(g_offloader_state.config.local_host_label) &&
+           offloader_label_valid(g_offloader_state.config.remote_host_label);
+}
+
 static bool offloader_state_ready(void)
 {
     return g_offloader_state.initialized &&
-           g_offloader_state.config.enabled &&
+           offloader_config_ready() &&
            g_offloader_state.policy.evaluate != NULL;
 }
 
-static const char *offloader_resolve_host(edge_offloader_route_t route, const edge_task_pair_runtime_t *runtime)
+static bool offloader_batch_mode_enabled(void)
+{
+    return g_offloader_state.config.mode == EDGE_OFFLOADER_MODE_BATCH;
+}
+
+static const char *offloader_resolve_host(edge_offloader_route_t route)
 {
     if (route == EDGE_OFFLOADER_ROUTE_REMOTE) {
-        if (g_offloader_state.config.remote_host_label != NULL &&
-            g_offloader_state.config.remote_host_label[0] != '\0') {
-            return g_offloader_state.config.remote_host_label;
-        }
-    } else {
-        if (g_offloader_state.config.local_host_label != NULL &&
-            g_offloader_state.config.local_host_label[0] != '\0') {
-            return g_offloader_state.config.local_host_label;
-        }
+        return g_offloader_state.config.remote_host_label;
     }
 
-    return edge_task_pair_host_name(runtime);
+    return g_offloader_state.config.local_host_label;
 }
 
 static bool offloader_collect_candidate_at_index(
@@ -69,6 +79,139 @@ static bool offloader_collect_candidate_at_index(
     candidate->snapshot = snapshot;
     candidate->runtime = runtime;
     return true;
+}
+
+static bool offloader_normalize_batch_results(
+    const edge_offloader_candidate_t *candidates,
+    const edge_offloader_result_t *results,
+    size_t result_count,
+    edge_offloader_result_t *normalized_results)
+{
+    size_t i = 0U;
+
+    if (candidates == NULL || results == NULL || normalized_results == NULL) {
+        return false;
+    }
+
+    for (i = 0U; i < result_count; ++i) {
+        const edge_task_pair_runtime_t *runtime = NULL;
+        edge_offloader_result_t normalized = results[i];
+
+        if (normalized.task_index < 0) {
+            normalized.task_index = candidates[i].task_index;
+        }
+
+        if (normalized.task_index != candidates[i].task_index) {
+            return false;
+        }
+
+        switch (normalized.route) {
+            case EDGE_OFFLOADER_ROUTE_LOCAL:
+            case EDGE_OFFLOADER_ROUTE_REMOTE:
+                break;
+            default:
+                return false;
+        }
+
+        runtime = edge_task_pair_runtime_by_task_index(candidates[i].task_index);
+        if (runtime == NULL || edge_task_pair_id(runtime) != candidates[i].pair_id) {
+            return false;
+        }
+
+        normalized_results[i] = normalized;
+    }
+
+    return true;
+}
+
+static bool offloader_apply_batch_results(
+    const edge_offloader_candidate_t *candidates,
+    const edge_offloader_result_t *results,
+    size_t result_count)
+{
+    edge_offloader_result_t normalized_results[CONFIG_EA_MAX_TASKS];
+    size_t i = 0U;
+
+    if (result_count == 0U || result_count > CONFIG_EA_MAX_TASKS) {
+        return false;
+    }
+
+    if (!offloader_normalize_batch_results(candidates, results, result_count, normalized_results)) {
+        return false;
+    }
+
+    for (i = 0U; i < result_count; ++i) {
+        if (!edge_offloader_apply_result(&normalized_results[i])) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool offloader_run_per_task_cycle(void)
+{
+    edge_offloader_candidate_t candidates[CONFIG_EA_MAX_TASKS];
+    size_t candidate_count = 0U;
+    bool processed_any = false;
+    size_t i = 0U;
+
+    candidate_count = edge_offloader_collect_candidates(candidates, CONFIG_EA_MAX_TASKS);
+    if (candidate_count == 0U) {
+        return false;
+    }
+
+    for (i = 0U; i < candidate_count && i < CONFIG_EA_MAX_TASKS; ++i) {
+        edge_offloader_result_t result = {0};
+
+        if (!g_offloader_state.policy.evaluate(&candidates[i], &result)) {
+            return false;
+        }
+
+        if (result.task_index < 0) {
+            result.task_index = candidates[i].task_index;
+        }
+
+        if (!edge_offloader_apply_result(&result)) {
+            return false;
+        }
+
+        processed_any = true;
+    }
+
+    return processed_any;
+}
+
+static bool offloader_run_batch_cycle(void)
+{
+    edge_offloader_candidate_t candidates[CONFIG_EA_MAX_TASKS];
+    edge_offloader_result_t planned_results[CONFIG_EA_MAX_TASKS];
+    size_t candidate_count = 0U;
+    size_t planned_count = 0U;
+
+    if (g_offloader_state.policy.plan == NULL) {
+        return false;
+    }
+
+    candidate_count = edge_offloader_collect_candidates(candidates, CONFIG_EA_MAX_TASKS);
+    if (candidate_count == 0U) {
+        return false;
+    }
+
+    if (!g_offloader_state.policy.plan(
+            candidates,
+            candidate_count,
+            planned_results,
+            candidate_count,
+            &planned_count)) {
+        return false;
+    }
+
+    if (planned_count != candidate_count) {
+        return false;
+    }
+
+    return offloader_apply_batch_results(candidates, planned_results, planned_count);
 }
 
 void edge_offloader_init(
@@ -140,11 +283,11 @@ bool edge_offloader_apply_result(const edge_offloader_result_t *result)
     switch (result->route) {
         case EDGE_OFFLOADER_ROUTE_REMOTE:
             exec_site = REMOTE_EXECUTION;
-            host = offloader_resolve_host(result->route, runtime);
+            host = offloader_resolve_host(result->route);
             break;
         case EDGE_OFFLOADER_ROUTE_LOCAL:
             exec_site = LOCAL_EXECUTION;
-            host = offloader_resolve_host(result->route, runtime);
+            host = offloader_resolve_host(result->route);
             break;
         default:
             return false;
@@ -187,36 +330,13 @@ bool edge_offloader_run_for_task_index(int task_index)
 
 bool edge_offloader_run_once(void)
 {
-    edge_offloader_candidate_t candidates[CONFIG_EA_MAX_TASKS];
-    size_t candidate_count = 0U;
-    bool processed_any = false;
-
     if (!offloader_state_ready()) {
         return false;
     }
 
-    candidate_count = edge_offloader_collect_candidates(candidates, CONFIG_EA_MAX_TASKS);
-    if (candidate_count == 0U) {
-        return false;
+    if (offloader_batch_mode_enabled()) {
+        return offloader_run_batch_cycle();
     }
 
-    for (size_t i = 0U; i < candidate_count && i < CONFIG_EA_MAX_TASKS; ++i) {
-        edge_offloader_result_t result = {0};
-
-        if (!g_offloader_state.policy.evaluate(&candidates[i], &result)) {
-            return false;
-        }
-
-        if (result.task_index < 0) {
-            result.task_index = candidates[i].task_index;
-        }
-
-        if (!edge_offloader_apply_result(&result)) {
-            return false;
-        }
-
-        processed_any = true;
-    }
-
-    return processed_any;
+    return offloader_run_per_task_cycle();
 }

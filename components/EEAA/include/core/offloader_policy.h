@@ -6,6 +6,7 @@
 #ifndef OFFLOADER_POLICY_H
 #define OFFLOADER_POLICY_H
 
+#include <stddef.h>
 #include <stdbool.h>
 #include "core/offloader_types.h"
 
@@ -32,11 +33,29 @@ typedef bool (*edge_offloader_policy_eval_fn)(
     edge_offloader_result_t *result);
 
 /**
+ * @brief Batch policy planning function.
+ *
+ * @param[in] candidates Candidate EA task views.
+ * @param[in] candidate_count Number of candidates in @p candidates.
+ * @param[out] results Planned routing decisions.
+ * @param[in] results_capacity Number of slots available in @p results.
+ * @param[out] results_written Number of routing decisions written to @p results.
+ * @return true on success, false on invalid inputs or planning failure.
+ */
+typedef bool (*edge_offloader_policy_plan_fn)(
+    const edge_offloader_candidate_t *candidates,
+    size_t candidate_count,
+    edge_offloader_result_t *results,
+    size_t results_capacity,
+    size_t *results_written);
+
+/**
  * @brief Policy descriptor used by the controller.
  */
 struct edge_offloader_policy {
     const char *name;
     edge_offloader_policy_eval_fn evaluate;
+    edge_offloader_policy_plan_fn plan;
 };
 
 /**
