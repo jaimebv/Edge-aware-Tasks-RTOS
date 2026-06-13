@@ -298,6 +298,14 @@ task_manager snapshots -> offloader candidate scan -> policy evaluation
                         -> task_manager route mutation
 ```
 
+Batch/vector mode adds an explicit planning stage:
+
+```text
+task_manager snapshots -> offloader candidate scan -> batch policy planning
+                        -> offloading vector -> validation
+                        -> task_manager route mutation
+```
+
 The offloader only considers client segments when it scans for candidates.
 The controller then writes the resulting route back through the task manager so
 the local server half or the remote host path can be selected consistently.
