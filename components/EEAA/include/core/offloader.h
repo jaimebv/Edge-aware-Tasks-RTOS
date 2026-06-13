@@ -43,6 +43,9 @@ void edge_offloader_shutdown(void);
 /**
  * @brief Execute one offloader control cycle.
  *
+ * The active controller mode determines whether the cycle uses per-task
+ * routing or batch/vector routing.
+ *
  * @return true when at least one candidate was processed successfully.
  */
 bool edge_offloader_run_once(void);

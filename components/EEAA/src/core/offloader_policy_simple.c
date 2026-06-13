@@ -39,9 +39,37 @@ static bool edge_offloader_policy_simple_evaluate(
     return true;
 }
 
+static bool edge_offloader_policy_simple_plan(
+    const edge_offloader_candidate_t *candidates,
+    size_t candidate_count,
+    edge_offloader_result_t *results,
+    size_t results_capacity,
+    size_t *results_written)
+{
+    size_t i = 0U;
+
+    if (candidates == NULL || results == NULL || results_written == NULL) {
+        return false;
+    }
+
+    if (candidate_count == 0U || results_capacity < candidate_count) {
+        return false;
+    }
+
+    for (i = 0U; i < candidate_count; ++i) {
+        if (!edge_offloader_policy_simple_evaluate(&candidates[i], &results[i])) {
+            return false;
+        }
+    }
+
+    *results_written = candidate_count;
+    return true;
+}
+
 static const edge_offloader_policy_t kSimplePolicy = {
     .name = "simple-local-first",
     .evaluate = edge_offloader_policy_simple_evaluate,
+    .plan = edge_offloader_policy_simple_plan,
 };
 
 const edge_offloader_policy_t *edge_offloader_policy_simple(void)

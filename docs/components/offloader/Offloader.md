@@ -30,12 +30,18 @@ The first implementation milestone was intentionally narrow:
 - task-manager-owned mutation of host and execution-site metadata
 - no ML model, prediction stack, or external planner
 
+The controller expects explicit, non-empty host labels in its configuration.
+It does not silently fall back to the runtime's current host label when a route
+is applied.
+
 That scope keeps the controller reviewable and makes the data flow easy to
 verify on hardware.
 
 ## 3. Information flow
 
-The controller follows a simple flow:
+The controller follows one of two flows depending on its configured mode.
+
+Per-task mode:
 
 ```text
 task_manager snapshots
@@ -53,9 +59,30 @@ route result
 task_manager mutation helpers
 ```
 
-The controller never writes task-manager state directly.
-It asks the task manager to update the host label and execution site for the
-selected task index.
+Batch/vector mode:
+
+```text
+task_manager snapshots
+        |
+        v
+collect all client candidates
+        |
+        v
+batch policy planning
+        |
+        v
+offloading vector
+        |
+        v
+validate the full vector
+        |
+        v
+task_manager mutation helpers
+```
+
+The controller never writes task-manager state directly. It asks the task
+manager to update the host label and execution site for the selected task
+index or the full planned vector.
 
 ## 4. Code layout
 
@@ -73,11 +100,22 @@ The controller exposes two levels of operation:
 
 - `edge_offloader_run_for_task_index()` evaluates one known client index
 - `edge_offloader_run_once()` scans active tasks, filters client candidates,
-  and applies the configured policy to each candidate
+  and then follows the configured mode
+
+In per-task mode, the controller evaluates and applies each candidate one at a
+time.
+
+In batch/vector mode, the controller collects all active client candidates,
+asks the policy to produce a full offloading vector, validates the complete
+plan, and then applies the route changes.
 
 The controller uses the task snapshot to decide whether an entry is a client
 side candidate.
 That keeps the offload decision aligned with the EA pair model.
+
+The control loop cadence is owned by the caller or scheduler. The offloader
+uses `control_period_ms` as a configuration hint, but it does not start or
+manage its own timer.
 
 The policy result is applied through:
 
@@ -95,6 +133,11 @@ WCET-based threshold.
 
 That gives the controller a deterministic baseline before any richer decision
 logic is introduced.
+
+The policy layer now supports both:
+
+- per-candidate evaluation for compatibility and direct routing helpers
+- batch planning for schedulability-aware vector decisions
 
 ## 7. Regression coverage
 
