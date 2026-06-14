@@ -4,6 +4,7 @@
 - [Port-RTOS Test Harness](Port_Rtos_Test.md)
 - [Offloader Test Harness](Offloader_Test.md)
 - [Task Lifecycle Test Harness](Task_Lifecycle_Test.md)
+- [Runtime API Test Harness](Runtime_API_Test.md)
 - [Port-board Test Harness](Port_Board_Test.md)
 
 These pages explain the test style used in `test/` and how the harnesses are
