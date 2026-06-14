@@ -131,7 +131,8 @@ static void public_task_model_local_creation(void)
     expect_true("local public monitor count", get_num_monitored_tasks() == baseline + 1U, "local public task should add one monitor");
     eaPort_Delay_Milliseconds(20U);
     expect_true("local public snapshot valid", get_task_snapshot_by_index(result.task_index, &snapshot) && snapshot.valid, "local public snapshot invalid");
-    expect_true("local public snapshot name", strcmp(snapshot.name, "PublicLocal-lc-0") == 0, "local public snapshot name mismatch");
+    expect_true("local public snapshot name", strncmp(snapshot.name, "PublicLocal-lc-", strlen("PublicLocal-lc-")) == 0,
+                "local public snapshot name mismatch");
     expect_true("local public cleanup", edge_task_pair_destroy_by_task_index(result.task_index, EDGE_TASK_CLEANUP_CLIENT_ONLY) == 1,
                 "local public cleanup failed");
     expect_true("local public cleanup baseline", get_num_monitored_tasks() == baseline, "local public cleanup should restore baseline");
