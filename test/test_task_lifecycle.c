@@ -30,6 +30,7 @@
 
 void test_offloader_policy_suite(void);
 void test_offloader_controller_suite(void);
+void test_task_public_model_run(void);
 
 
 #define TEST_PAIR_COUNT          6U
@@ -965,7 +966,10 @@ static void test_route_mutation_hooks(void)
 
 void app_main(void)
 {
+    setvbuf(stdout, NULL, _IONBF, 0);
     printf("=== Task lifecycle test harness ===\n");
+    fflush(stdout);
+    test_task_public_model_run();
     task_manager_init();
     test_helpers_reset_counts();
     reset_runtime_indices();
@@ -991,5 +995,5 @@ void app_main(void)
     printf("=== Task lifecycle tests done: passes=%" PRIu32 " fails=%" PRIu32 " ===\n",
            test_helpers_pass_count(),
            test_helpers_fail_count());
-
+    fflush(stdout);
 }

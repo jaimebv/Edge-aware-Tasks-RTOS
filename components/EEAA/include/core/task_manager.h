@@ -164,6 +164,33 @@ typedef struct {
   uint32_t message_size;
 } edge_task_pair_spec_t;
 
+/**
+ * @brief Public task declaration for the FreeRTOS edge-enrichment runtime.
+ *
+ * The spec is intentionally explicit so application code can describe the
+ * work without touching runtime internals. It is a thin, stable view over the
+ * current task manager creation contract.
+ */
+typedef struct {
+  const char *task_name;
+  uint8_t priority;
+  eaPort_task_function_t client_task_code;
+  eaPort_task_function_t server_task_code;
+  uint32_t client_stack_depth;
+  uint32_t server_stack_depth;
+  uint8_t core_id;
+  edge_task_type_t app_type;
+  edge_task_execution_site_t default_execution_site;
+  edge_task_pair_spec_t pair_spec;
+  const char *host_name;
+  uint32_t period_ms;
+  unsigned mae2el;
+  uint8_t delay_weight;
+  uint8_t energy_weight;
+  unsigned client_wcet;
+  unsigned server_wcet;
+} edge_task_spec_t;
+
 
 /**
  * @brief Opaque runtime state shared by the paired client/server tasks.
@@ -306,6 +333,36 @@ edge_task_creation_result_t CreateEATaskPinnedToCoreEx(
     uint32_t xPeriod,
     unsigned WCET_c,
     unsigned WCET_s);
+
+/**
+ * @brief Initialize a public task specification with safe defaults.
+ *
+ * The initializer keeps the public task model easy to adopt while still
+ * requiring the caller to fill in the execution details explicitly.
+ */
+void edge_task_spec_init(edge_task_spec_t *spec);
+
+/**
+ * @brief Validate a public task specification.
+ *
+ * @param[in] spec Public task specification to inspect.
+ * @return true when the specification is structurally valid.
+ */
+bool edge_task_spec_validate(const edge_task_spec_t *spec);
+
+/**
+ * @brief Create an edge-aware task from a public task specification.
+ *
+ * This is the v1 developer-facing entry point for task declaration.
+ */
+edge_task_creation_result_t CreateEATaskFromSpecEx(const edge_task_spec_t *spec);
+
+/**
+ * @brief Legacy integer wrapper for public task specification creation.
+ *
+ * @return 0 on success, -1 on failure.
+ */
+int CreateEATaskFromSpec(const edge_task_spec_t *spec);
 /**
  * @brief Convert a creation failure reason to a stable text label.
  *
