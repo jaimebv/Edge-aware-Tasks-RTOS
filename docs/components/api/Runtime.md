@@ -65,5 +65,15 @@ code does not have to assemble a full runtime config by hand:
 These helpers are intentionally thin. They fill the standard defaults while
 still forwarding to the same underlying runtime and task-manager code.
 
+## Runnable demos
+
+The board application in `src/` now exposes two switchable demos:
+
+- `EA_EXAMPLE_HAPPY_PATH` builds the short convenience-flow sample.
+- `EA_EXAMPLE_ADVANCED_API` builds the full explicit contract sample.
+
+The default `nodemcu-32s` build falls back to the advanced demo, while the
+`nodemcu-32s-happy` PlatformIO environment compiles the happy-path demo.
+
 That separation keeps the task model declarative and lets the runtime facade
 own lifecycle control.
