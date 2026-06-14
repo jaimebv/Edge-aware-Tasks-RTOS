@@ -117,7 +117,7 @@ typedef struct {
  */
 typedef struct {
     char                    name[CONFIG_EA_MAX_TASK_NAME_LEN];
-    char                    host[CONFIG_EA_MAX_TASK_NAME_LEN];
+    char                    local_host_label[CONFIG_EA_MAX_TASK_NAME_LEN];
     uint32_t                pair_id;
     int32_t                 task_index;
     int32_t                 peer_index;
@@ -189,12 +189,12 @@ typedef struct {
   edge_task_execution_site_t default_execution_site;
   edge_task_pair_spec_t pair_spec;
   /**
-   * @brief Optional label for the runtime/host that owns the task pair.
+   * @brief Optional label for the local runtime/host that owns the task pair.
    *
-   * Defaults to "0.0.0.0" in edge_task_spec_init() and is mainly used for
-   * diagnostics and runtime metadata.
+   * Defaults to "LOCAL_RUNTIME" in edge_task_spec_init() and is mainly used
+   * for diagnostics and runtime metadata.
    */
-  const char *host_name;
+  const char *local_host_label;
   uint32_t period_ms;
   /**
    * @brief Deadline in milliseconds.
@@ -468,6 +468,11 @@ const char *edge_task_pair_server_name(const edge_task_pair_runtime_t *runtime);
  * @brief Get the host label for an active runtime.
  * Returns NULL if the runtime is NULL or inactive.
  */
+const char *edge_task_pair_local_host_label(const edge_task_pair_runtime_t *runtime);
+/**
+ * @deprecated Compatibility wrapper for the legacy host-name accessor.
+ * Prefer edge_task_pair_local_host_label() in new code.
+ */
 const char *edge_task_pair_host_name(const edge_task_pair_runtime_t *runtime);
 
 /**
@@ -598,11 +603,16 @@ unsigned get_task_OE2EL(int taskIndex);
 unsigned get_task_WCET(int taskIndex);
 
 /**
- * @brief Update the host label for a monitored task and its runtime record.
+ * @brief Update the local host label for a monitored task and its runtime record.
  *
  * @param[in] taskIndex Monitored task index.
- * @param[in] host Null-terminated host label.
- * @return true when the task is active and the host was updated.
+ * @param[in] host Null-terminated local host label.
+ * @return true when the task is active and the local host label was updated.
+ */
+bool edge_task_pair_set_local_host_label_by_index(int taskIndex, const char *host);
+/**
+ * @deprecated Compatibility wrapper for the legacy host-name mutator.
+ * Prefer edge_task_pair_set_local_host_label_by_index() in new code.
  */
 bool edge_task_pair_set_host_by_index(int taskIndex, const char *host);
 

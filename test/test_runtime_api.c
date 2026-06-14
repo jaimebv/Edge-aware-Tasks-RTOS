@@ -87,6 +87,7 @@ static edge_task_creation_result_t create_runtime_pair(const char *task_name)
     spec.app_type = ENRICHED;
     spec.pair_spec = kRuntimePairSpec;
     spec.period_ms = TEST_RUNTIME_PERIOD_MS;
+    spec.local_host_label = "LOCAL_RUNTIME";
     spec.delay_weight = TEST_RUNTIME_DELAY_WEIGHT;
     spec.energy_weight = TEST_RUNTIME_ENERGY_WEIGHT;
 
@@ -160,8 +161,8 @@ static void test_runtime_controller_forwarding(void)
 
     runtime = edge_task_pair_runtime_by_task_index(result.task_index);
     expect_true("runtime forwarded host", runtime != NULL, "runtime lookup failed");
-    host = edge_task_pair_host_name(runtime);
-    expect_true("runtime forwarded host label", host != NULL && strcmp(host, "RUNTIME_LOCAL") == 0,
+    host = edge_task_pair_local_host_label(runtime);
+    expect_true("runtime forwarded local host label", host != NULL && strcmp(host, "RUNTIME_LOCAL") == 0,
                 "runtime host should be updated through the facade");
     expect_true("runtime forwarded exec site", strcmp(get_task_ex_site_by_index(result.task_index), "LOCAL_EXECUTION") == 0,
                 "runtime execution site should be updated through the facade");

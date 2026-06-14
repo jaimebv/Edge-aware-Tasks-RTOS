@@ -119,7 +119,7 @@ manage its own timer.
 
 The policy result is applied through:
 
-- `edge_task_pair_set_host_by_index()`
+- `edge_task_pair_set_local_host_label_by_index()`
 - `edge_task_pair_set_exec_site_by_index()`
 
 Those helpers keep the task manager as the single owner of runtime mutation.

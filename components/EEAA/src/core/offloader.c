@@ -297,7 +297,7 @@ bool edge_offloader_apply_result(const edge_offloader_result_t *result)
         return false;
     }
 
-    if (!edge_task_pair_set_host_by_index(result->task_index, host)) {
+    if (!edge_task_pair_set_local_host_label_by_index(result->task_index, host)) {
         return false;
     }
 

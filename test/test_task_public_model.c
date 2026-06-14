@@ -77,8 +77,8 @@ static void public_task_spec_init_and_validation(void)
 
     edge_task_spec_init(&spec);
     expect_true("public spec init default name", spec.task_name == NULL, "default task name should be NULL");
-    expect_true("public spec init default host", spec.host_name != NULL && strcmp(spec.host_name, "0.0.0.0") == 0,
-                "default host should be local fallback");
+    expect_true("public spec init default local host label", spec.local_host_label != NULL && strcmp(spec.local_host_label, "LOCAL_RUNTIME") == 0,
+                "default local host label should match runtime fallback");
     expect_true("public spec init default execution site", spec.default_execution_site == LOCAL_EXECUTION,
                 "default execution site should be local");
     expect_true("public spec init default queue depth", spec.pair_spec.queue_depth == 1U, "default queue depth mismatch");
@@ -119,6 +119,7 @@ static void public_task_model_local_creation(void)
     spec.period_ms = TEST_PUBLIC_MODEL_PERIOD_MS;
     spec.delay_weight = TEST_PUBLIC_MODEL_DELAY_WEIGHT;
     spec.energy_weight = TEST_PUBLIC_MODEL_ENERGY_WEIGHT;
+    spec.local_host_label = "LOCAL_RUNTIME";
 
     expect_true("local public spec valid", edge_task_spec_validate(&spec), "local public spec should validate");
 
@@ -159,6 +160,7 @@ static void public_task_model_pair_creation(void)
     spec.period_ms = TEST_PUBLIC_MODEL_PERIOD_MS;
     spec.delay_weight = TEST_PUBLIC_MODEL_DELAY_WEIGHT;
     spec.energy_weight = TEST_PUBLIC_MODEL_ENERGY_WEIGHT;
+    spec.local_host_label = "LOCAL_RUNTIME";
 
     expect_true("pair public spec valid", edge_task_spec_validate(&spec), "pair public spec should validate");
 

@@ -256,13 +256,13 @@ static void test_controller_candidate_collection_and_routing(void)
     expect_true("controller candidate snapshot valid", candidate.snapshot.valid, "candidate snapshot invalid");
     expect_true("controller candidate snapshot name", strstr(candidate.snapshot.name, "-cl-") != NULL, "candidate should be client-side");
     expect_true("controller run local", edge_offloader_run_once(), "controller local run failed");
-    host = edge_task_pair_host_name(edge_task_pair_runtime_by_task_index(client_index));
+    host = edge_task_pair_local_host_label(edge_task_pair_runtime_by_task_index(client_index));
     expect_true("controller local exec site", strcmp(get_task_ex_site_by_index(client_index), "LOCAL_EXECUTION") == 0, "local execution site mismatch");
     expect_true("controller local host", host != NULL && strcmp(host, config.local_host_label) == 0, "local host mismatch");
 
     update_task_metrics_OE2EL_by_index(client_index, 600U);
     expect_true("controller run remote", edge_offloader_run_once(), "controller remote run failed");
-    host = edge_task_pair_host_name(edge_task_pair_runtime_by_task_index(client_index));
+    host = edge_task_pair_local_host_label(edge_task_pair_runtime_by_task_index(client_index));
     expect_true("controller remote exec site", strcmp(get_task_ex_site_by_index(client_index), "REMOTE_EXECUTION") == 0, "remote execution site mismatch");
     expect_true("controller remote host", host != NULL && strcmp(host, config.remote_host_label) == 0, "remote host mismatch");
 
@@ -313,8 +313,8 @@ static void test_controller_batch_vector_routing(void)
 
     expect_true("batch run once", edge_offloader_run_once(), "batch controller run failed");
 
-    host_a = edge_task_pair_host_name(edge_task_pair_runtime_by_task_index(client_a));
-    host_b = edge_task_pair_host_name(edge_task_pair_runtime_by_task_index(client_b));
+    host_a = edge_task_pair_local_host_label(edge_task_pair_runtime_by_task_index(client_a));
+    host_b = edge_task_pair_local_host_label(edge_task_pair_runtime_by_task_index(client_b));
     expect_true("batch local exec site", strcmp(get_task_ex_site_by_index(client_a), "LOCAL_EXECUTION") == 0, "batch local execution site mismatch");
     expect_true("batch remote exec site", strcmp(get_task_ex_site_by_index(client_b), "REMOTE_EXECUTION") == 0, "batch remote execution site mismatch");
     expect_true("batch local host", host_a != NULL && strcmp(host_a, config.local_host_label) == 0, "batch local host mismatch");
@@ -363,8 +363,8 @@ static void test_controller_batch_rejects_incomplete_vector(void)
     update_task_metrics_OE2EL_by_index(client_b, 600U);
 
     expect_true("reject batch run blocked", edge_offloader_run_once() == false, "incomplete batch vector should fail");
-    host_a = edge_task_pair_host_name(edge_task_pair_runtime_by_task_index(client_a));
-    host_b = edge_task_pair_host_name(edge_task_pair_runtime_by_task_index(client_b));
+    host_a = edge_task_pair_local_host_label(edge_task_pair_runtime_by_task_index(client_a));
+    host_b = edge_task_pair_local_host_label(edge_task_pair_runtime_by_task_index(client_b));
     expect_true("reject batch host a unchanged", host_a != NULL && strcmp(host_a, "bootstrap-host") == 0, "batch host A should remain unchanged");
     expect_true("reject batch host b unchanged", host_b != NULL && strcmp(host_b, "bootstrap-host") == 0, "batch host B should remain unchanged");
     expect_true("reject batch exec site a unchanged", strcmp(get_task_ex_site_by_index(client_a), "LOCAL_EXECUTION") == 0, "batch exec site A should remain local");

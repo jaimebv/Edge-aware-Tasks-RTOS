@@ -72,7 +72,7 @@ A task creation call provides:
 The following inputs are supported but no longer required by the public model:
 
 - execution site, which defaults to `LOCAL_EXECUTION`
-- host name, which defaults to the local runtime label fallback
+- `local_host_label`, which defaults to the local runtime label fallback
 - WCET values, which may stay at zero until they are measured later
 
 When the deadline is not explicitly set, the task manager uses the period as
@@ -88,7 +88,7 @@ This includes:
 - non-zero stack sizes
 - non-zero period
 
-Fields such as host name, execution site, deadline, and WCET are treated as
+Fields such as `local_host_label`, execution site, deadline, and WCET are treated as
 defaults or metadata, not as mandatory declaration inputs.
 
 If validation fails, the result reports `EDGE_TASK_CREATION_FAILURE_INVALID_SPEC`.
@@ -106,7 +106,7 @@ The runtime slot is important because it holds:
 - client/server indices
 - role
 - names
-- host label
+- `local_host_label`
 - lifecycle state
 
 ### 3.4 Queue creation
@@ -242,7 +242,7 @@ It contains:
 #### Meaning of the cold fields
 
 - **name**: human-readable task identity
-- **host**: origin or host label attached to the task
+- **local_host_label**: origin or host label attached to the task
 - **pair_id**: same identity as the hot state
 - **task_index**: same index as the hot state
 - **peer_index**: same peer linkage as the hot state
@@ -254,7 +254,7 @@ It contains:
 - **delay_weight / energy_weight**: tuning weights used by the model
 
 If the task declaration omits a deadline, the task manager resolves it to the
-period. If it omits the host label, the runtime stores the local fallback label.
+period. If it omits `local_host_label`, the runtime stores the local fallback label.
 
 ### 5.3 Route mutation helpers
 
@@ -262,7 +262,8 @@ The task manager also exposes narrow route-mutation helpers for the offloader
 controller:
 
 - `edge_task_pair_runtime_by_task_index()`
-- `edge_task_pair_set_host_by_index()`
+- `edge_task_pair_set_local_host_label_by_index()`
+- `edge_task_pair_set_host_by_index()` remains as a compatibility wrapper
 - `edge_task_pair_set_exec_site_by_index()`
 
 These helpers let the controller update routing metadata without reaching into
