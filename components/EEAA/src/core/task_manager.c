@@ -18,7 +18,7 @@ struct edge_task_pair_runtime {
     uint8_t        lifecycle_state;
     char           client_name[CONFIG_EA_MAX_TASK_NAME_LEN];
     char           server_name[CONFIG_EA_MAX_TASK_NAME_LEN];
-    char           host_name[CONFIG_EA_MAX_TASK_NAME_LEN];
+    char           local_host_label[CONFIG_EA_MAX_TASK_NAME_LEN];
     edge_task_pair_role_t role;
 };
 
@@ -73,9 +73,39 @@ static void edge_task_spec_set_defaults(edge_task_spec_t *spec)
     spec->core_id = eaPort_NO_AFFINITY;
     spec->app_type = LOCAL;
     spec->default_execution_site = LOCAL_EXECUTION;
-    spec->host_name = "0.0.0.0";
+    spec->local_host_label = "LOCAL_RUNTIME";
     spec->pair_spec.queue_depth = 1U;
     spec->pair_spec.message_size = sizeof(int);
+}
+
+static void edge_task_spec_init_common(
+    edge_task_spec_t *spec,
+    const char *task_name,
+    eaPort_task_function_t client_task_code,
+    eaPort_task_function_t server_task_code,
+    uint32_t client_stack_depth,
+    uint32_t server_stack_depth,
+    uint32_t period_ms,
+    const edge_task_pair_spec_t *pair_spec,
+    edge_task_type_t app_type)
+{
+    edge_task_spec_init(spec);
+    if (spec == NULL) {
+        return;
+    }
+
+    spec->task_name = task_name;
+    spec->client_task_code = client_task_code;
+    spec->server_task_code = server_task_code;
+    spec->client_stack_depth = client_stack_depth;
+    spec->server_stack_depth = server_stack_depth;
+    spec->period_ms = period_ms;
+    spec->app_type = app_type;
+    spec->default_execution_site = LOCAL_EXECUTION;
+    spec->deadline_ms = period_ms;
+    if (pair_spec != NULL) {
+        spec->pair_spec = *pair_spec;
+    }
 }
 
 static bool edge_task_spec_is_valid(const edge_task_spec_t *spec)
@@ -100,24 +130,120 @@ static bool edge_task_spec_is_valid(const edge_task_spec_t *spec)
         return false;
     }
 
-    if (spec->host_name == NULL || spec->host_name[0] == '\0') {
-        return false;
-    }
-
     if (spec->period_ms == 0U) {
-        return false;
-    }
-
-    if (spec->client_wcet == 0U || spec->server_wcet == 0U) {
         return false;
     }
 
     return true;
 }
 
+static unsigned edge_task_spec_resolve_deadline_ms(const edge_task_spec_t *spec)
+{
+    if (spec == NULL) {
+        return 0U;
+    }
+
+    if (spec->deadline_ms == 0U) {
+        return spec->period_ms;
+    }
+
+    return spec->deadline_ms;
+}
+
 void edge_task_spec_init(edge_task_spec_t *spec)
 {
     edge_task_spec_set_defaults(spec);
+}
+
+void edge_task_spec_init_enriched(
+    edge_task_spec_t *spec,
+    const char *task_name,
+    eaPort_task_function_t client_task_code,
+    eaPort_task_function_t server_task_code,
+    uint32_t client_stack_depth,
+    uint32_t server_stack_depth,
+    uint32_t period_ms,
+    const edge_task_pair_spec_t *pair_spec)
+{
+    edge_task_spec_init_common(
+        spec,
+        task_name,
+        client_task_code,
+        server_task_code,
+        client_stack_depth,
+        server_stack_depth,
+        period_ms,
+        pair_spec,
+        ENRICHED);
+}
+
+void edge_task_spec_init_local(
+    edge_task_spec_t *spec,
+    const char *task_name,
+    eaPort_task_function_t task_code,
+    uint32_t stack_depth,
+    uint32_t period_ms,
+    const edge_task_pair_spec_t *pair_spec)
+{
+    edge_task_spec_init_common(
+        spec,
+        task_name,
+        task_code,
+        task_code,
+        stack_depth,
+        stack_depth,
+        period_ms,
+        pair_spec,
+        LOCAL);
+}
+
+void edge_task_spec_set_priority(edge_task_spec_t *spec, uint8_t priority)
+{
+    if (spec != NULL) {
+        spec->priority = priority;
+    }
+}
+
+void edge_task_spec_set_core_id(edge_task_spec_t *spec, uint8_t core_id)
+{
+    if (spec != NULL) {
+        spec->core_id = core_id;
+    }
+}
+
+void edge_task_spec_set_local_host_label(edge_task_spec_t *spec, const char *local_host_label)
+{
+    if (spec == NULL) {
+        return;
+    }
+
+    spec->local_host_label = (local_host_label != NULL && local_host_label[0] != '\0')
+        ? local_host_label
+        : "LOCAL_RUNTIME";
+}
+
+void edge_task_spec_set_deadline_ms(edge_task_spec_t *spec, uint32_t deadline_ms)
+{
+    if (spec != NULL) {
+        spec->deadline_ms = deadline_ms;
+    }
+}
+
+void edge_task_spec_set_wcet(edge_task_spec_t *spec, unsigned client_wcet, unsigned server_wcet)
+{
+    if (spec == NULL) {
+        return;
+    }
+
+    spec->client_wcet = client_wcet;
+    spec->server_wcet = server_wcet;
+}
+
+void edge_task_spec_set_execution_site_local(edge_task_spec_t *spec)
+{
+    if (spec != NULL) {
+        spec->default_execution_site = LOCAL_EXECUTION;
+    }
 }
 
 bool edge_task_spec_validate(const edge_task_spec_t *spec)
@@ -131,33 +257,40 @@ static edge_task_creation_result_t edge_task_create_from_spec_impl(const edge_ta
         .task_index = -1,
         .failure_reason = EDGE_TASK_CREATION_FAILURE_NONE,
     };
-    const char *host_name = NULL;
+    edge_task_spec_t resolved_spec;
+    const char *local_host_label = NULL;
 
     if (!edge_task_spec_is_valid(spec)) {
         result.failure_reason = EDGE_TASK_CREATION_FAILURE_INVALID_SPEC;
         return result;
     }
 
-    host_name = spec->host_name;
+    local_host_label = spec->local_host_label;
+    if (local_host_label == NULL || local_host_label[0] == '\0') {
+        local_host_label = "LOCAL_RUNTIME";
+    }
+
+    resolved_spec = *spec;
+    resolved_spec.deadline_ms = edge_task_spec_resolve_deadline_ms(spec);
 
     result = CreateEATaskPinnedToCoreEx(
-        spec->task_name,
-        spec->priority,
-        spec->client_task_code,
-        spec->server_task_code,
-        spec->client_stack_depth,
-        spec->server_stack_depth,
-        spec->core_id,
-        spec->app_type,
-        spec->mae2el,
-        spec->delay_weight,
-        spec->energy_weight,
-        spec->default_execution_site,
-        &spec->pair_spec,
-        host_name,
-        spec->period_ms,
-        spec->client_wcet,
-        spec->server_wcet);
+        resolved_spec.task_name,
+        resolved_spec.priority,
+        resolved_spec.client_task_code,
+        resolved_spec.server_task_code,
+        resolved_spec.client_stack_depth,
+        resolved_spec.server_stack_depth,
+        resolved_spec.core_id,
+        resolved_spec.app_type,
+        resolved_spec.deadline_ms,
+        resolved_spec.delay_weight,
+        resolved_spec.energy_weight,
+        resolved_spec.default_execution_site,
+        &resolved_spec.pair_spec,
+        local_host_label,
+        resolved_spec.period_ms,
+        resolved_spec.client_wcet,
+        resolved_spec.server_wcet);
 
     return result;
 }
@@ -401,7 +534,7 @@ static void record_monitor_from_task(
     int32_t peer_index,
     edge_task_execution_site_t pcExec,
     uint8_t xCoreID,
-    unsigned MAE2EL,
+    unsigned deadline_ms,
     uint8_t delay_weight,
     uint8_t energy_weight,
     uint32_t xPeriod,
@@ -412,8 +545,8 @@ static void record_monitor_from_task(
     strncpy(cold->name, pcName, CONFIG_EA_MAX_TASK_NAME_LEN - 1);
     cold->name[CONFIG_EA_MAX_TASK_NAME_LEN - 1] = '\0';
     if (pcHost != NULL) {
-        strncpy(cold->host, pcHost, CONFIG_EA_MAX_TASK_NAME_LEN - 1);
-        cold->host[CONFIG_EA_MAX_TASK_NAME_LEN - 1] = '\0';
+        strncpy(cold->local_host_label, pcHost, CONFIG_EA_MAX_TASK_NAME_LEN - 1);
+        cold->local_host_label[CONFIG_EA_MAX_TASK_NAME_LEN - 1] = '\0';
     }
     hot->pair_id = pair_id;
     hot->task_index = task_index;
@@ -422,7 +555,7 @@ static void record_monitor_from_task(
     cold->task_index = task_index;
     cold->peer_index = peer_index;
     cold->exec_site = pcExec;
-    cold->MAE2EL = MAE2EL;
+    cold->deadline_ms = deadline_ms;
     cold->WCET = WCET;
     cold->period = xPeriod;
     cold->delay_weight = delay_weight;
@@ -799,9 +932,14 @@ const char *edge_task_pair_server_name(const edge_task_pair_runtime_t *runtime)
     return runtime ? runtime->server_name : NULL;
 }
 
+const char *edge_task_pair_local_host_label(const edge_task_pair_runtime_t *runtime)
+{
+    return runtime ? runtime->local_host_label : NULL;
+}
+
 const char *edge_task_pair_host_name(const edge_task_pair_runtime_t *runtime)
 {
-    return runtime ? runtime->host_name : NULL;
+    return edge_task_pair_local_host_label(runtime);
 }
 
 const edge_task_pair_runtime_t *edge_task_pair_runtime_by_task_index(int taskIndex)
@@ -829,7 +967,7 @@ int edge_task_pair_peer_index(const edge_task_pair_runtime_t *runtime)
     return runtime ? runtime->server_index : -1;
 }
 
-static bool update_monitor_host_locked(int taskIndex, const char *host)
+static bool update_monitor_local_host_label_locked(int taskIndex, const char *host)
 {
     if (host == NULL || host[0] == '\0') {
         return false;
@@ -837,8 +975,8 @@ static bool update_monitor_host_locked(int taskIndex, const char *host)
 
     eaPort_Mutex_Enter(monitoredTasksMux);
     if (monitor_index_valid_locked(taskIndex)) {
-        strncpy(monitoredTaskCold[taskIndex].host, host, CONFIG_EA_MAX_TASK_NAME_LEN - 1U);
-        monitoredTaskCold[taskIndex].host[CONFIG_EA_MAX_TASK_NAME_LEN - 1U] = '\0';
+        strncpy(monitoredTaskCold[taskIndex].local_host_label, host, CONFIG_EA_MAX_TASK_NAME_LEN - 1U);
+        monitoredTaskCold[taskIndex].local_host_label[CONFIG_EA_MAX_TASK_NAME_LEN - 1U] = '\0';
         eaPort_Mutex_Exit(monitoredTasksMux);
         return true;
     }
@@ -860,9 +998,9 @@ static bool update_monitor_exec_site_locked(int taskIndex, edge_task_execution_s
     return updated;
 }
 
-bool edge_task_pair_set_host_by_index(int taskIndex, const char *host)
+bool edge_task_pair_set_local_host_label_by_index(int taskIndex, const char *host)
 {
-    bool updated = update_monitor_host_locked(taskIndex, host);
+    bool updated = update_monitor_local_host_label_locked(taskIndex, host);
 
     if (host == NULL || host[0] == '\0') {
         return false;
@@ -872,12 +1010,17 @@ bool edge_task_pair_set_host_by_index(int taskIndex, const char *host)
     eaPort_Mutex_Enter(runtimeRegistryMux);
     edge_task_pair_runtime_t *runtime = runtime_from_task_index_locked(taskIndex);
     if (runtime != NULL) {
-        snprintf(runtime->host_name, sizeof(runtime->host_name), "%s", host);
+        snprintf(runtime->local_host_label, sizeof(runtime->local_host_label), "%s", host);
         updated = true;
     }
     eaPort_Mutex_Exit(runtimeRegistryMux);
 
     return updated;
+}
+
+bool edge_task_pair_set_host_by_index(int taskIndex, const char *host)
+{
+    return edge_task_pair_set_local_host_label_by_index(taskIndex, host);
 }
 
 bool edge_task_pair_set_exec_site_by_index(int taskIndex, edge_task_execution_site_t exec_site)
@@ -1007,7 +1150,7 @@ int _CreateTaskPinnedToCore_(
     const uint8_t xCoreID, 
     edge_task_type_t app_type, 
     edge_task_segment_t app_segment, 
-    unsigned MAE2EL, 
+    unsigned deadline_ms, 
     uint8_t delay_weight, 
     uint8_t energy_weight, 
     const char *const pcHost, 
@@ -1091,7 +1234,7 @@ int _CreateTaskPinnedToCore_(
             : -1,
         pcExec,
         xCoreID,
-        MAE2EL,
+        deadline_ms,
         delay_weight,
         energy_weight,
         xPeriod,
@@ -1121,7 +1264,7 @@ edge_task_creation_result_t CreateEATaskPinnedToCoreEx(
     const uint32_t MemStackDepthServer,
     const uint8_t CoreID,
     edge_task_type_t AppType,
-    unsigned MAE2EL,
+    unsigned deadline_ms,
     uint8_t DelaySensibility,
     uint8_t EnergySensibility,
     edge_task_execution_site_t DefaultExecutionSite,
@@ -1159,7 +1302,7 @@ edge_task_creation_result_t CreateEATaskPinnedToCoreEx(
     edgeRuntime->client_index = -1;
     edgeRuntime->server_index = -1;
     if (HostName != NULL) {
-        snprintf(edgeRuntime->host_name, sizeof(edgeRuntime->host_name), "%s", HostName);
+        snprintf(edgeRuntime->local_host_label, sizeof(edgeRuntime->local_host_label), "%s", HostName);
     }
     edgeRuntime->role = EDGE_TASK_PAIR_LOCAL;
 
@@ -1217,7 +1360,7 @@ edge_task_creation_result_t CreateEATaskPinnedToCoreEx(
             CoreID,
             AppType,
             CLIENT_SEGMENT,
-            MAE2EL,
+            deadline_ms,
             DelaySensibility,
             EnergySensibility,
             HostName,
@@ -1251,7 +1394,7 @@ edge_task_creation_result_t CreateEATaskPinnedToCoreEx(
                 CoreID,
                 AppType,
                 SERVER_SEGMENT,
-                MAE2EL,
+                deadline_ms,
                 DelaySensibility,
                 EnergySensibility,
                 HostName,
@@ -1293,7 +1436,7 @@ edge_task_creation_result_t CreateEATaskPinnedToCoreEx(
             CoreID,
             AppType,
             UNIQUE_SEGMENT,
-            MAE2EL,
+            deadline_ms,
             DelaySensibility,
             EnergySensibility,
             "0.0.0.0",
@@ -1340,7 +1483,7 @@ int CreateEATaskPinnedToCore(
     const uint32_t MemStackDepthServer,
     const uint8_t CoreID,
     edge_task_type_t AppType,
-    unsigned MAE2EL,
+    unsigned deadline_ms,
     uint8_t DelaySensibility,
     uint8_t EnergySensibility,
     edge_task_execution_site_t DefaultExecutionSite,
@@ -1359,7 +1502,7 @@ int CreateEATaskPinnedToCore(
         MemStackDepthServer,
         CoreID,
         AppType,
-        MAE2EL,
+        deadline_ms,
         DelaySensibility,
         EnergySensibility,
         DefaultExecutionSite,

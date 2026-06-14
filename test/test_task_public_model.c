@@ -18,7 +18,6 @@
 #define TEST_PUBLIC_MODEL_CORE_ID       0U
 #define TEST_PUBLIC_MODEL_STACK         2048U
 #define TEST_PUBLIC_MODEL_PERIOD_MS     1000U
-#define TEST_PUBLIC_MODEL_MAE2EL        1000U
 #define TEST_PUBLIC_MODEL_DELAY_WEIGHT  50U
 #define TEST_PUBLIC_MODEL_ENERGY_WEIGHT 50U
 
@@ -78,10 +77,15 @@ static void public_task_spec_init_and_validation(void)
 
     edge_task_spec_init(&spec);
     expect_true("public spec init default name", spec.task_name == NULL, "default task name should be NULL");
-    expect_true("public spec init default host", spec.host_name != NULL && strcmp(spec.host_name, "0.0.0.0") == 0,
-                "default host should be local fallback");
+    expect_true("public spec init default local host label", spec.local_host_label != NULL && strcmp(spec.local_host_label, "LOCAL_RUNTIME") == 0,
+                "default local host label should match runtime fallback");
+    expect_true("public spec init default execution site", spec.default_execution_site == LOCAL_EXECUTION,
+                "default execution site should be local");
     expect_true("public spec init default queue depth", spec.pair_spec.queue_depth == 1U, "default queue depth mismatch");
     expect_true("public spec init default queue size", spec.pair_spec.message_size == sizeof(int), "default queue size mismatch");
+    expect_true("public spec init default deadline", spec.deadline_ms == 0U, "default deadline should be deferred to period");
+    expect_true("public spec init default client wcet", spec.client_wcet == 0U, "default client WCET should be zero");
+    expect_true("public spec init default server wcet", spec.server_wcet == 0U, "default server WCET should be zero");
     expect_true("public spec invalid when empty", edge_task_spec_validate(&spec) == false, "empty public spec should be invalid");
 
     spec.task_name = "PublicModel";
@@ -90,8 +94,7 @@ static void public_task_spec_init_and_validation(void)
     spec.client_stack_depth = TEST_PUBLIC_MODEL_STACK;
     spec.server_stack_depth = TEST_PUBLIC_MODEL_STACK;
     spec.period_ms = TEST_PUBLIC_MODEL_PERIOD_MS;
-    spec.client_wcet = 100U;
-    spec.server_wcet = 100U;
+    spec.pair_spec = kPublicModelPairSpec;
 
     expect_true("public spec valid after population", edge_task_spec_validate(&spec), "populated public spec should be valid");
     pass("public task spec validation");
@@ -112,16 +115,11 @@ static void public_task_model_local_creation(void)
     spec.client_stack_depth = TEST_PUBLIC_MODEL_STACK;
     spec.server_stack_depth = TEST_PUBLIC_MODEL_STACK;
     spec.core_id = TEST_PUBLIC_MODEL_CORE_ID;
-    spec.app_type = LOCAL;
-    spec.default_execution_site = LOCAL_EXECUTION;
     spec.pair_spec = kPublicModelPairSpec;
-    spec.host_name = "0.0.0.0";
     spec.period_ms = TEST_PUBLIC_MODEL_PERIOD_MS;
-    spec.mae2el = TEST_PUBLIC_MODEL_MAE2EL;
     spec.delay_weight = TEST_PUBLIC_MODEL_DELAY_WEIGHT;
     spec.energy_weight = TEST_PUBLIC_MODEL_ENERGY_WEIGHT;
-    spec.client_wcet = 120U;
-    spec.server_wcet = 120U;
+    spec.local_host_label = "LOCAL_RUNTIME";
 
     expect_true("local public spec valid", edge_task_spec_validate(&spec), "local public spec should validate");
 
@@ -133,6 +131,7 @@ static void public_task_model_local_creation(void)
     expect_true("local public snapshot valid", get_task_snapshot_by_index(result.task_index, &snapshot) && snapshot.valid, "local public snapshot invalid");
     expect_true("local public snapshot name", strncmp(snapshot.name, "PublicLocal-lc-", strlen("PublicLocal-lc-")) == 0,
                 "local public snapshot name mismatch");
+    expect_true("local public snapshot wcet default", snapshot.WCET == 0U, "local public snapshot WCET should default to zero");
     expect_true("local public cleanup", edge_task_pair_destroy_by_task_index(result.task_index, EDGE_TASK_CLEANUP_CLIENT_ONLY) == 1,
                 "local public cleanup failed");
     expect_true("local public cleanup baseline", get_num_monitored_tasks() == baseline, "local public cleanup should restore baseline");
@@ -157,15 +156,11 @@ static void public_task_model_pair_creation(void)
     spec.server_stack_depth = TEST_PUBLIC_MODEL_STACK;
     spec.core_id = TEST_PUBLIC_MODEL_CORE_ID;
     spec.app_type = ENRICHED;
-    spec.default_execution_site = LOCAL_EXECUTION;
     spec.pair_spec = kPublicModelPairSpec;
-    spec.host_name = "127.0.0.1";
     spec.period_ms = TEST_PUBLIC_MODEL_PERIOD_MS;
-    spec.mae2el = TEST_PUBLIC_MODEL_MAE2EL;
     spec.delay_weight = TEST_PUBLIC_MODEL_DELAY_WEIGHT;
     spec.energy_weight = TEST_PUBLIC_MODEL_ENERGY_WEIGHT;
-    spec.client_wcet = 200U;
-    spec.server_wcet = 400U;
+    spec.local_host_label = "LOCAL_RUNTIME";
 
     expect_true("pair public spec valid", edge_task_spec_validate(&spec), "pair public spec should validate");
 

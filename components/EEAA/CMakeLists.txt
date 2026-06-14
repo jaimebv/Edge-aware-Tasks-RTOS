@@ -4,6 +4,7 @@
 idf_component_register(
   SRCS  "src/port/port_board_esp32.c"
         "src/port/port_rtos_freertos.c"
+        "src/api/runtime.c"
         "src/core/task_manager.c"
         "src/core/offloader.c"
         "src/core/offloader_policy_simple.c"

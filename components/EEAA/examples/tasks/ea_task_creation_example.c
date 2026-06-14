@@ -57,24 +57,17 @@ static edge_task_spec_t make_task_spec(void)
 {
     edge_task_spec_t spec;
 
-    edge_task_spec_init(&spec);
-    spec.task_name = "SensorTask";
-    spec.priority = 2U;
-    spec.client_task_code = task_sensor_client;
-    spec.server_task_code = task_processor_server;
-    spec.client_stack_depth = 2048U;
-    spec.server_stack_depth = 2048U;
-    spec.core_id = 0U;
-    spec.app_type = ENRICHED;
-    spec.default_execution_site = LOCAL_EXECUTION;
-    spec.pair_spec = kTaskPairSpec;
-    spec.host_name = "127.0.0.1";
-    spec.period_ms = TASK_PAIR_PERIOD_MS;
-    spec.mae2el = 1000U;
-    spec.delay_weight = 50U;
-    spec.energy_weight = 50U;
-    spec.client_wcet = 200U;
-    spec.server_wcet = 800U;
+    edge_task_spec_init_enriched(
+        &spec,
+        "SensorTask",
+        task_sensor_client,
+        task_processor_server,
+        2048U,
+        2048U,
+        TASK_PAIR_PERIOD_MS,
+        &kTaskPairSpec);
+    edge_task_spec_set_priority(&spec, 2U);
+    edge_task_spec_set_local_host_label(&spec, "LOCAL_RUNTIME");
 
     return spec;
 }

@@ -10,7 +10,8 @@ It is centered on the `EEAA` component, which wraps FreeRTOS primitives behind a
 - **Edge-task modeling** for local, enriched, and remote execution styles
 - **Task monitoring metadata** for host, relation, core, period, WCET, latency, and runtime tracking
 - **Client/server task pairing** with queue-based message exchange
-- **Reusable examples** showing task creation, scheduling, synchronization, and memory management
+- **Runtime facade** for product-grade start/stop/status control over the task manager and offloader
+- **Reusable examples** showing task creation, scheduling, synchronization, memory management, and runnable demo flows
 
 ## How it works
 
@@ -19,7 +20,8 @@ The project builds a thin abstraction on top of FreeRTOS:
 - `port/port_interface_types.h` defines RTOS-agnostic handles and status codes.
 - `port/port_rtos_freertos.c` maps those abstractions to native FreeRTOS APIs.
 - `core/task_manager.c` creates and tracks edge-aware task pairs, including queues and per-task metadata.
-- `examples/` demonstrates how to use the layer in real flows.
+- `api/runtime.c` wraps the task manager and offloader behind a product-grade runtime facade.
+- `src/examples/` demonstrates the runnable board demos.
 
 The main task model uses two cooperating roles:
 
@@ -51,11 +53,20 @@ That structure makes the repo useful for studying edge-oriented workloads, deadl
 pio run -d . -e nodemcu-32s
 ```
 
+To build the selectable demos:
+
+```bash
+pio run -d . -e nodemcu-32s-happy
+pio run -d . -e nodemcu-32s-advanced
+```
+
 ### Flash
 
 ```bash
 pio run -d . -e nodemcu-32s -t upload
 ```
+
+Use the matching environment name when flashing one of the selectable demos.
 
 ### Monitor
 
@@ -70,8 +81,11 @@ Read the documentation hub in /docs:
 ## Example entry points
 
 - `components/EEAA/examples/tasks/ea_task_creation_example.c` — dynamic edge-task pair creation
+- `components/EEAA/examples/api/ea_runtime_api_example.c` — runtime facade usage flow
 - `components/EEAA/examples/port/port_rtos_example.c` — RTOS abstraction demos
 - `components/EEAA/examples/port/port_board_example.c` — board abstraction demo
+- `src/examples/happy_path_example.c` — selectable happy-path runtime/task demo
+- `src/examples/advanced_api_example.c` — selectable advanced runtime/task demo
 
 
 ## Contributing

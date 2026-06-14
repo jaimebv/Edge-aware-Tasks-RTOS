@@ -55,6 +55,23 @@ The public task spec is the developer-facing shape for v1:
 `CreateEATaskPinnedToCoreEx()` remains available as the lower-level creation
 entry point for compatibility and internal use.
 
+### 3.0 Convenience helpers
+
+The task manager also exposes a small happy-path layer so application code can
+build common declarations without manually assigning every field:
+
+- `edge_task_spec_init_enriched()`
+- `edge_task_spec_init_local()`
+- `edge_task_spec_set_priority()`
+- `edge_task_spec_set_core_id()`
+- `edge_task_spec_set_local_host_label()`
+- `edge_task_spec_set_deadline_ms()`
+- `edge_task_spec_set_wcet()`
+- `edge_task_spec_set_execution_site_local()`
+
+These helpers do not create a new runtime path. They simply pre-fill the public
+spec with the normal local-first defaults and then reuse `CreateEATaskFromSpecEx()`.
+
 ### 3.1 Inputs
 
 A task creation call provides:
@@ -65,11 +82,18 @@ A task creation call provides:
 - client and server stack sizes
 - core affinity
 - application type (`LOCAL`, `ENRICHED`, `REMOTE`)
-- MAE2EL / delay sensitivity / energy sensitivity parameters
-- execution site (`LOCAL_EXECUTION` or `REMOTE_EXECUTION`)
+- deadline / delay sensitivity / energy sensitivity parameters
 - queue specification
-- host name
-- period and WCET values
+- period
+
+The following inputs are supported but no longer required by the public model:
+
+- execution site, which defaults to `LOCAL_EXECUTION`
+- `local_host_label`, which defaults to the local runtime label fallback
+- WCET values, which may stay at zero until they are measured later
+
+When the deadline is not explicitly set, the task manager uses the period as
+the default deadline.
 
 ### 3.2 Validation
 
@@ -78,7 +102,11 @@ This includes:
 
 - non-null task entry points
 - valid queue spec
-- valid parameter combinations for the requested task type
+- non-zero stack sizes
+- non-zero period
+
+Fields such as `local_host_label`, execution site, deadline, and WCET are treated as
+defaults or metadata, not as mandatory declaration inputs.
 
 If validation fails, the result reports `EDGE_TASK_CREATION_FAILURE_INVALID_SPEC`.
 
@@ -95,7 +123,7 @@ The runtime slot is important because it holds:
 - client/server indices
 - role
 - names
-- host label
+- `local_host_label`
 - lifecycle state
 
 ### 3.4 Queue creation
@@ -222,7 +250,7 @@ It contains:
 - task index
 - peer index
 - period
-- MAE2EL
+- deadline
 - WCET
 - execution site
 - delay weight
@@ -231,15 +259,19 @@ It contains:
 #### Meaning of the cold fields
 
 - **name**: human-readable task identity
-- **host**: origin or host label attached to the task
+- **local_host_label**: origin or host label attached to the task
 - **pair_id**: same identity as the hot state
 - **task_index**: same index as the hot state
 - **peer_index**: same peer linkage as the hot state
 - **period**: scheduling period used for the task
-- **MAE2EL**: configuration for max acceptable end-to-end latency
-- **WCET**: worst-case execution-time budget for the monitored side
+- **deadline**: relative deadline for the task declaration in milliseconds
+- **WCET**: worst-case execution-time budget for the monitored side; zero means
+  "not measured yet"
 - **exec_site**: local or remote execution mode
 - **delay_weight / energy_weight**: tuning weights used by the model
+
+If the task declaration omits a deadline, the task manager resolves it to the
+period. If it omits `local_host_label`, the runtime stores the local fallback label.
 
 ### 5.3 Route mutation helpers
 
@@ -247,7 +279,8 @@ The task manager also exposes narrow route-mutation helpers for the offloader
 controller:
 
 - `edge_task_pair_runtime_by_task_index()`
-- `edge_task_pair_set_host_by_index()`
+- `edge_task_pair_set_local_host_label_by_index()`
+- `edge_task_pair_set_host_by_index()` remains as a compatibility wrapper
 - `edge_task_pair_set_exec_site_by_index()`
 
 These helpers let the controller update routing metadata without reaching into

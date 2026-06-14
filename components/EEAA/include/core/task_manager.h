@@ -117,12 +117,12 @@ typedef struct {
  */
 typedef struct {
     char                    name[CONFIG_EA_MAX_TASK_NAME_LEN];
-    char                    host[CONFIG_EA_MAX_TASK_NAME_LEN];
+    char                    local_host_label[CONFIG_EA_MAX_TASK_NAME_LEN];
     uint32_t                pair_id;
     int32_t                 task_index;
     int32_t                 peer_index;
     uint32_t                period;
-    unsigned                MAE2EL;
+    unsigned                deadline_ms;
     unsigned                WCET;
     edge_task_execution_site_t exec_site;
     uint8_t                 delay_weight;
@@ -180,14 +180,41 @@ typedef struct {
   uint32_t server_stack_depth;
   uint8_t core_id;
   edge_task_type_t app_type;
+  /**
+   * @brief Preferred execution site for the first execution.
+   *
+   * Defaults to LOCAL_EXECUTION in edge_task_spec_init(). Callers may leave
+   * it untouched for the common local-first path.
+   */
   edge_task_execution_site_t default_execution_site;
   edge_task_pair_spec_t pair_spec;
-  const char *host_name;
+  /**
+   * @brief Optional label for the local runtime/host that owns the task pair.
+   *
+   * Defaults to "LOCAL_RUNTIME" in edge_task_spec_init() and is mainly used
+   * for diagnostics and runtime metadata.
+   */
+  const char *local_host_label;
   uint32_t period_ms;
-  unsigned mae2el;
+  /**
+   * @brief Deadline in milliseconds.
+   *
+   * Defaults to the period when left as zero.
+   */
+  unsigned deadline_ms;
   uint8_t delay_weight;
   uint8_t energy_weight;
+  /**
+   * @brief Optional worst-case execution-time budget.
+   *
+   * A value of zero means "not measured yet" and keeps the task valid.
+   */
   unsigned client_wcet;
+  /**
+   * @brief Optional worst-case execution-time budget for the server half.
+   *
+   * A value of zero means "not measured yet" and keeps the task valid.
+   */
   unsigned server_wcet;
 } edge_task_spec_t;
 
@@ -274,7 +301,7 @@ int _CreateTaskPinnedToCore_(
     const uint8_t xCoreID, 
     edge_task_type_t app_type, 
     edge_task_segment_t app_segment, 
-    unsigned MAE2EL, 
+    unsigned deadline_ms, 
     uint8_t delay_weight, 
     uint8_t energy_weight, 
     const char *const pcHost, 
@@ -299,7 +326,7 @@ int CreateEATaskPinnedToCore(
     const uint32_t MemStackDepthServer, 
     const uint8_t CoreID, 
     edge_task_type_t AppType, 
-    unsigned MAE2EL, 
+    unsigned deadline_ms, 
     uint8_t DelaySensibility, 
     uint8_t EnergySensibility, 
     edge_task_execution_site_t DefaultExecutionSite, 
@@ -324,7 +351,7 @@ edge_task_creation_result_t CreateEATaskPinnedToCoreEx(
     const uint32_t MemStackDepthServer,
     const uint8_t CoreID,
     edge_task_type_t AppType,
-    unsigned MAE2EL,
+    unsigned deadline_ms,
     uint8_t DelaySensibility,
     uint8_t EnergySensibility,
     edge_task_execution_site_t DefaultExecutionSite,
@@ -337,16 +364,77 @@ edge_task_creation_result_t CreateEATaskPinnedToCoreEx(
 /**
  * @brief Initialize a public task specification with safe defaults.
  *
- * The initializer keeps the public task model easy to adopt while still
- * requiring the caller to fill in the execution details explicitly.
+ * The initializer keeps the public task model easy to adopt by pre-filling
+ * the local-first defaults. Callers still need to supply the mandatory
+ * identity, task entry points, stack sizes, period, and queue contract.
  */
 void edge_task_spec_init(edge_task_spec_t *spec);
+
+/**
+ * @brief Initialize a happy-path enriched task specification.
+ *
+ * This helper fills the common defaults for a paired task so application code
+ * only needs to provide the task identity, task functions, stack sizes,
+ * period, and pair contract.
+ */
+void edge_task_spec_init_enriched(
+    edge_task_spec_t *spec,
+    const char *task_name,
+    eaPort_task_function_t client_task_code,
+    eaPort_task_function_t server_task_code,
+    uint32_t client_stack_depth,
+    uint32_t server_stack_depth,
+    uint32_t period_ms,
+    const edge_task_pair_spec_t *pair_spec);
+
+/**
+ * @brief Initialize a happy-path local task specification.
+ *
+ * This helper fills the local-first defaults for a single-task declaration.
+ */
+void edge_task_spec_init_local(
+    edge_task_spec_t *spec,
+    const char *task_name,
+    eaPort_task_function_t task_code,
+    uint32_t stack_depth,
+    uint32_t period_ms,
+    const edge_task_pair_spec_t *pair_spec);
+
+/**
+ * @brief Update the suggested task priority.
+ */
+void edge_task_spec_set_priority(edge_task_spec_t *spec, uint8_t priority);
+
+/**
+ * @brief Update the suggested core affinity.
+ */
+void edge_task_spec_set_core_id(edge_task_spec_t *spec, uint8_t core_id);
+
+/**
+ * @brief Update the local host label in a public task specification.
+ */
+void edge_task_spec_set_local_host_label(edge_task_spec_t *spec, const char *local_host_label);
+
+/**
+ * @brief Update the deadline in milliseconds.
+ */
+void edge_task_spec_set_deadline_ms(edge_task_spec_t *spec, uint32_t deadline_ms);
+
+/**
+ * @brief Update the WCET budgets for the client and server halves.
+ */
+void edge_task_spec_set_wcet(edge_task_spec_t *spec, unsigned client_wcet, unsigned server_wcet);
+
+/**
+ * @brief Force the task to use the local execution site.
+ */
+void edge_task_spec_set_execution_site_local(edge_task_spec_t *spec);
 
 /**
  * @brief Validate a public task specification.
  *
  * @param[in] spec Public task specification to inspect.
- * @return true when the specification is structurally valid.
+ * @return true when the specification has the mandatory declaration fields.
  */
 bool edge_task_spec_validate(const edge_task_spec_t *spec);
 
@@ -439,6 +527,11 @@ const char *edge_task_pair_server_name(const edge_task_pair_runtime_t *runtime);
 /**
  * @brief Get the host label for an active runtime.
  * Returns NULL if the runtime is NULL or inactive.
+ */
+const char *edge_task_pair_local_host_label(const edge_task_pair_runtime_t *runtime);
+/**
+ * @deprecated Compatibility wrapper for the legacy host-name accessor.
+ * Prefer edge_task_pair_local_host_label() in new code.
  */
 const char *edge_task_pair_host_name(const edge_task_pair_runtime_t *runtime);
 
@@ -570,11 +663,16 @@ unsigned get_task_OE2EL(int taskIndex);
 unsigned get_task_WCET(int taskIndex);
 
 /**
- * @brief Update the host label for a monitored task and its runtime record.
+ * @brief Update the local host label for a monitored task and its runtime record.
  *
  * @param[in] taskIndex Monitored task index.
- * @param[in] host Null-terminated host label.
- * @return true when the task is active and the host was updated.
+ * @param[in] host Null-terminated local host label.
+ * @return true when the task is active and the local host label was updated.
+ */
+bool edge_task_pair_set_local_host_label_by_index(int taskIndex, const char *host);
+/**
+ * @deprecated Compatibility wrapper for the legacy host-name mutator.
+ * Prefer edge_task_pair_set_local_host_label_by_index() in new code.
  */
 bool edge_task_pair_set_host_by_index(int taskIndex, const char *host);
 
