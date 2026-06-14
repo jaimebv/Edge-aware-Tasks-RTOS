@@ -8,6 +8,7 @@ idf_component_register(
         "src/core/task_manager.c"
         "src/core/offloader.c"
         "src/core/offloader_policy_simple.c"
+        "src/core/offloader_policy_rm.c"
   INCLUDE_DIRS "include"
   REQUIRES    driver
               esp_timer

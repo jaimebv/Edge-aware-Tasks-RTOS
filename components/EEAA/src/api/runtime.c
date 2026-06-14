@@ -31,10 +31,29 @@ static void runtime_config_apply_defaults(edge_runtime_config_t *config)
     memset(config, 0, sizeof(*config));
     config->offloader.enabled = true;
     config->offloader.mode = EDGE_OFFLOADER_MODE_PER_TASK;
+    config->offloader.scheduler_policy = EDGE_OFFLOADER_SCHEDULER_FP;
     config->offloader.control_period_ms = 100U;
     config->offloader.local_host_label = "LOCAL_RUNTIME";
     config->offloader.remote_host_label = "REMOTE_RUNTIME";
-    config->policy = edge_offloader_policy_simple();
+    config->policy = NULL;
+}
+
+void edge_runtime_config_set_scheduler_policy(
+    edge_runtime_config_t *config,
+    edge_offloader_scheduler_policy_t scheduler_policy)
+{
+    if (config != NULL) {
+        config->offloader.scheduler_policy = scheduler_policy;
+    }
+}
+
+void edge_runtime_config_set_policy(
+    edge_runtime_config_t *config,
+    const edge_offloader_policy_t *policy)
+{
+    if (config != NULL) {
+        config->policy = policy;
+    }
 }
 
 static bool runtime_config_is_valid(const edge_runtime_config_t *config)
@@ -45,6 +64,13 @@ static bool runtime_config_is_valid(const edge_runtime_config_t *config)
 
     if (!config->offloader.enabled) {
         return true;
+    }
+
+    if (config->offloader.scheduler_policy != EDGE_OFFLOADER_SCHEDULER_FP &&
+        config->offloader.scheduler_policy != EDGE_OFFLOADER_SCHEDULER_RM &&
+        config->offloader.scheduler_policy != EDGE_OFFLOADER_SCHEDULER_EDF &&
+        config->offloader.scheduler_policy != EDGE_OFFLOADER_SCHEDULER_CUSTOM) {
+        return false;
     }
 
     return config->offloader.control_period_ms > 0U &&
@@ -59,7 +85,16 @@ static const edge_offloader_policy_t *runtime_policy_or_default(
         return config->policy;
     }
 
-    return edge_offloader_policy_simple();
+    if (config != NULL) {
+        return edge_offloader_policy_default_for_scheduler(config->offloader.scheduler_policy);
+    }
+
+    return edge_offloader_policy_default_for_scheduler(EDGE_OFFLOADER_SCHEDULER_FP);
+}
+
+static const edge_offloader_policy_t *runtime_effective_policy(void)
+{
+    return runtime_policy_or_default(g_runtime_state.configured ? &g_runtime_state.config : NULL);
 }
 
 void edge_runtime_config_init(edge_runtime_config_t *config)
@@ -157,6 +192,7 @@ edge_runtime_state_t edge_runtime_state(void)
 bool edge_runtime_status(edge_runtime_status_t *status)
 {
     edge_runtime_config_t active_config;
+    const edge_offloader_policy_t *effective_policy = NULL;
 
     if (status == NULL) {
         return false;
@@ -171,12 +207,16 @@ bool edge_runtime_status(edge_runtime_status_t *status)
     status->running = g_runtime_state.running;
     status->offloader_enabled = active_config.offloader.enabled;
     status->offloader_mode = active_config.offloader.mode;
+    status->scheduler_policy = active_config.offloader.scheduler_policy;
     status->control_period_ms = active_config.offloader.control_period_ms;
     status->monitored_tasks = get_num_monitored_tasks();
     status->client_candidates = g_runtime_state.running && active_config.offloader.enabled
         ? edge_offloader_collect_candidates(NULL, 0U)
         : 0U;
-    status->policy_name = active_config.policy != NULL ? active_config.policy->name : NULL;
+    effective_policy = runtime_effective_policy();
+    status->policy_name = g_runtime_state.configured && effective_policy != NULL
+        ? effective_policy->name
+        : NULL;
     status->local_host_label = active_config.offloader.local_host_label;
     status->remote_host_label = active_config.offloader.remote_host_label;
     return true;

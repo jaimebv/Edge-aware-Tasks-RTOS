@@ -60,6 +60,7 @@ typedef struct {
     bool running;
     bool offloader_enabled;
     edge_offloader_mode_t offloader_mode;
+    edge_offloader_scheduler_policy_t scheduler_policy;
     uint32_t control_period_ms;
     size_t monitored_tasks;
     size_t client_candidates;
@@ -74,6 +75,28 @@ typedef struct {
  * @param[out] config Runtime configuration to initialize.
  */
 void edge_runtime_config_init(edge_runtime_config_t *config);
+
+/**
+ * @brief Set the scheduler policy used to select the default offloader policy.
+ *
+ * @param[in,out] config Runtime configuration to update.
+ * @param[in] scheduler_policy Scheduler model to use.
+ */
+void edge_runtime_config_set_scheduler_policy(
+    edge_runtime_config_t *config,
+    edge_offloader_scheduler_policy_t scheduler_policy);
+
+/**
+ * @brief Set an explicit offloader policy override.
+ *
+ * Passing NULL restores the scheduler-selected default policy.
+ *
+ * @param[in,out] config Runtime configuration to update.
+ * @param[in] policy Explicit policy descriptor or NULL.
+ */
+void edge_runtime_config_set_policy(
+    edge_runtime_config_t *config,
+    const edge_offloader_policy_t *policy);
 
 /**
  * @brief Start the runtime using the supplied configuration or defaults.

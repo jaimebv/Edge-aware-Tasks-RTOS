@@ -40,6 +40,20 @@ typedef enum {
 } edge_offloader_mode_t;
 
 /**
+ * @brief Scheduler policy model used by the offloader policy layer.
+ *
+ * FP is the default FreeRTOS-aligned fixed-priority mode. RM is layered on
+ * top of fixed-priority semantics. EDF is reserved for custom or future
+ * policy modules and is not assumed to be built into the scheduler itself.
+ */
+typedef enum {
+    EDGE_OFFLOADER_SCHEDULER_FP = 0,
+    EDGE_OFFLOADER_SCHEDULER_RM = 1,
+    EDGE_OFFLOADER_SCHEDULER_EDF = 2,
+    EDGE_OFFLOADER_SCHEDULER_CUSTOM = 3,
+} edge_offloader_scheduler_policy_t;
+
+/**
  * @brief Static controller configuration.
  *
  * The labels are used when applying the route decision back into the task
@@ -51,6 +65,7 @@ typedef enum {
 typedef struct {
     bool enabled;
     edge_offloader_mode_t mode;
+    edge_offloader_scheduler_policy_t scheduler_policy;
     uint32_t control_period_ms;
     const char *local_host_label;
     const char *remote_host_label;
