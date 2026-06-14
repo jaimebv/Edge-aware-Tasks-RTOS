@@ -54,15 +54,10 @@ static edge_task_spec_t make_runtime_example_spec(void)
     spec.server_stack_depth = 2048U;
     spec.core_id = 0U;
     spec.app_type = ENRICHED;
-    spec.default_execution_site = LOCAL_EXECUTION;
     spec.pair_spec = kExamplePairSpec;
-    spec.host_name = "LOCAL_RUNTIME";
     spec.period_ms = 1000U;
-    spec.deadline_ms = 1000U;
     spec.delay_weight = 50U;
     spec.energy_weight = 50U;
-    spec.client_wcet = 200U;
-    spec.server_wcet = 200U;
 
     return spec;
 }

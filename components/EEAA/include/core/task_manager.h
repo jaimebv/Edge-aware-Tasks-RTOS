@@ -180,14 +180,41 @@ typedef struct {
   uint32_t server_stack_depth;
   uint8_t core_id;
   edge_task_type_t app_type;
+  /**
+   * @brief Preferred execution site for the first execution.
+   *
+   * Defaults to LOCAL_EXECUTION in edge_task_spec_init(). Callers may leave
+   * it untouched for the common local-first path.
+   */
   edge_task_execution_site_t default_execution_site;
   edge_task_pair_spec_t pair_spec;
+  /**
+   * @brief Optional label for the runtime/host that owns the task pair.
+   *
+   * Defaults to "0.0.0.0" in edge_task_spec_init() and is mainly used for
+   * diagnostics and runtime metadata.
+   */
   const char *host_name;
   uint32_t period_ms;
+  /**
+   * @brief Deadline in milliseconds.
+   *
+   * Defaults to the period when left as zero.
+   */
   unsigned deadline_ms;
   uint8_t delay_weight;
   uint8_t energy_weight;
+  /**
+   * @brief Optional worst-case execution-time budget.
+   *
+   * A value of zero means "not measured yet" and keeps the task valid.
+   */
   unsigned client_wcet;
+  /**
+   * @brief Optional worst-case execution-time budget for the server half.
+   *
+   * A value of zero means "not measured yet" and keeps the task valid.
+   */
   unsigned server_wcet;
 } edge_task_spec_t;
 
@@ -337,8 +364,9 @@ edge_task_creation_result_t CreateEATaskPinnedToCoreEx(
 /**
  * @brief Initialize a public task specification with safe defaults.
  *
- * The initializer keeps the public task model easy to adopt while still
- * requiring the caller to fill in the execution details explicitly.
+ * The initializer keeps the public task model easy to adopt by pre-filling
+ * the local-first defaults. Callers still need to supply the mandatory
+ * identity, task entry points, stack sizes, period, and queue contract.
  */
 void edge_task_spec_init(edge_task_spec_t *spec);
 
@@ -346,7 +374,7 @@ void edge_task_spec_init(edge_task_spec_t *spec);
  * @brief Validate a public task specification.
  *
  * @param[in] spec Public task specification to inspect.
- * @return true when the specification is structurally valid.
+ * @return true when the specification has the mandatory declaration fields.
  */
 bool edge_task_spec_validate(const edge_task_spec_t *spec);
 

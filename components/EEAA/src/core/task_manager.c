@@ -100,15 +100,7 @@ static bool edge_task_spec_is_valid(const edge_task_spec_t *spec)
         return false;
     }
 
-    if (spec->host_name == NULL || spec->host_name[0] == '\0') {
-        return false;
-    }
-
     if (spec->period_ms == 0U) {
-        return false;
-    }
-
-    if (spec->client_wcet == 0U || spec->server_wcet == 0U) {
         return false;
     }
 
@@ -153,6 +145,9 @@ static edge_task_creation_result_t edge_task_create_from_spec_impl(const edge_ta
     }
 
     host_name = spec->host_name;
+    if (host_name == NULL || host_name[0] == '\0') {
+        host_name = "0.0.0.0";
+    }
 
     resolved_spec = *spec;
     resolved_spec.deadline_ms = edge_task_spec_resolve_deadline_ms(spec);

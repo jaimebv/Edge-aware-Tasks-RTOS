@@ -66,10 +66,17 @@ A task creation call provides:
 - core affinity
 - application type (`LOCAL`, `ENRICHED`, `REMOTE`)
 - deadline / delay sensitivity / energy sensitivity parameters
-- execution site (`LOCAL_EXECUTION` or `REMOTE_EXECUTION`)
 - queue specification
-- host name
-- period and WCET values
+- period
+
+The following inputs are supported but no longer required by the public model:
+
+- execution site, which defaults to `LOCAL_EXECUTION`
+- host name, which defaults to the local runtime label fallback
+- WCET values, which may stay at zero until they are measured later
+
+When the deadline is not explicitly set, the task manager uses the period as
+the default deadline.
 
 ### 3.2 Validation
 
@@ -78,7 +85,11 @@ This includes:
 
 - non-null task entry points
 - valid queue spec
-- valid parameter combinations for the requested task type
+- non-zero stack sizes
+- non-zero period
+
+Fields such as host name, execution site, deadline, and WCET are treated as
+defaults or metadata, not as mandatory declaration inputs.
 
 If validation fails, the result reports `EDGE_TASK_CREATION_FAILURE_INVALID_SPEC`.
 
@@ -237,9 +248,13 @@ It contains:
 - **peer_index**: same peer linkage as the hot state
 - **period**: scheduling period used for the task
 - **deadline**: relative deadline for the task declaration in milliseconds
-- **WCET**: worst-case execution-time budget for the monitored side
+- **WCET**: worst-case execution-time budget for the monitored side; zero means
+  "not measured yet"
 - **exec_site**: local or remote execution mode
 - **delay_weight / energy_weight**: tuning weights used by the model
+
+If the task declaration omits a deadline, the task manager resolves it to the
+period. If it omits the host label, the runtime stores the local fallback label.
 
 ### 5.3 Route mutation helpers
 

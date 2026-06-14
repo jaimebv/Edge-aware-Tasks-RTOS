@@ -66,15 +66,10 @@ static edge_task_spec_t make_task_spec(void)
     spec.server_stack_depth = 2048U;
     spec.core_id = 0U;
     spec.app_type = ENRICHED;
-    spec.default_execution_site = LOCAL_EXECUTION;
     spec.pair_spec = kTaskPairSpec;
-    spec.host_name = "127.0.0.1";
     spec.period_ms = TASK_PAIR_PERIOD_MS;
-    spec.deadline_ms = 1000U;
     spec.delay_weight = 50U;
     spec.energy_weight = 50U;
-    spec.client_wcet = 200U;
-    spec.server_wcet = 800U;
 
     return spec;
 }
