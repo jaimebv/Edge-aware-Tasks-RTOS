@@ -65,7 +65,7 @@ A task creation call provides:
 - client and server stack sizes
 - core affinity
 - application type (`LOCAL`, `ENRICHED`, `REMOTE`)
-- MAE2EL / delay sensitivity / energy sensitivity parameters
+- deadline / delay sensitivity / energy sensitivity parameters
 - execution site (`LOCAL_EXECUTION` or `REMOTE_EXECUTION`)
 - queue specification
 - host name
@@ -222,7 +222,7 @@ It contains:
 - task index
 - peer index
 - period
-- MAE2EL
+- deadline
 - WCET
 - execution site
 - delay weight
@@ -236,7 +236,7 @@ It contains:
 - **task_index**: same index as the hot state
 - **peer_index**: same peer linkage as the hot state
 - **period**: scheduling period used for the task
-- **MAE2EL**: configuration for max acceptable end-to-end latency
+- **deadline**: relative deadline for the task declaration in milliseconds
 - **WCET**: worst-case execution-time budget for the monitored side
 - **exec_site**: local or remote execution mode
 - **delay_weight / energy_weight**: tuning weights used by the model

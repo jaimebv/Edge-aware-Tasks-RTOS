@@ -115,6 +115,19 @@ static bool edge_task_spec_is_valid(const edge_task_spec_t *spec)
     return true;
 }
 
+static unsigned edge_task_spec_resolve_deadline_ms(const edge_task_spec_t *spec)
+{
+    if (spec == NULL) {
+        return 0U;
+    }
+
+    if (spec->deadline_ms == 0U) {
+        return spec->period_ms;
+    }
+
+    return spec->deadline_ms;
+}
+
 void edge_task_spec_init(edge_task_spec_t *spec)
 {
     edge_task_spec_set_defaults(spec);
@@ -131,6 +144,7 @@ static edge_task_creation_result_t edge_task_create_from_spec_impl(const edge_ta
         .task_index = -1,
         .failure_reason = EDGE_TASK_CREATION_FAILURE_NONE,
     };
+    edge_task_spec_t resolved_spec;
     const char *host_name = NULL;
 
     if (!edge_task_spec_is_valid(spec)) {
@@ -140,24 +154,27 @@ static edge_task_creation_result_t edge_task_create_from_spec_impl(const edge_ta
 
     host_name = spec->host_name;
 
+    resolved_spec = *spec;
+    resolved_spec.deadline_ms = edge_task_spec_resolve_deadline_ms(spec);
+
     result = CreateEATaskPinnedToCoreEx(
-        spec->task_name,
-        spec->priority,
-        spec->client_task_code,
-        spec->server_task_code,
-        spec->client_stack_depth,
-        spec->server_stack_depth,
-        spec->core_id,
-        spec->app_type,
-        spec->mae2el,
-        spec->delay_weight,
-        spec->energy_weight,
-        spec->default_execution_site,
-        &spec->pair_spec,
+        resolved_spec.task_name,
+        resolved_spec.priority,
+        resolved_spec.client_task_code,
+        resolved_spec.server_task_code,
+        resolved_spec.client_stack_depth,
+        resolved_spec.server_stack_depth,
+        resolved_spec.core_id,
+        resolved_spec.app_type,
+        resolved_spec.deadline_ms,
+        resolved_spec.delay_weight,
+        resolved_spec.energy_weight,
+        resolved_spec.default_execution_site,
+        &resolved_spec.pair_spec,
         host_name,
-        spec->period_ms,
-        spec->client_wcet,
-        spec->server_wcet);
+        resolved_spec.period_ms,
+        resolved_spec.client_wcet,
+        resolved_spec.server_wcet);
 
     return result;
 }
@@ -401,7 +418,7 @@ static void record_monitor_from_task(
     int32_t peer_index,
     edge_task_execution_site_t pcExec,
     uint8_t xCoreID,
-    unsigned MAE2EL,
+    unsigned deadline_ms,
     uint8_t delay_weight,
     uint8_t energy_weight,
     uint32_t xPeriod,
@@ -422,7 +439,7 @@ static void record_monitor_from_task(
     cold->task_index = task_index;
     cold->peer_index = peer_index;
     cold->exec_site = pcExec;
-    cold->MAE2EL = MAE2EL;
+    cold->deadline_ms = deadline_ms;
     cold->WCET = WCET;
     cold->period = xPeriod;
     cold->delay_weight = delay_weight;
@@ -1007,7 +1024,7 @@ int _CreateTaskPinnedToCore_(
     const uint8_t xCoreID, 
     edge_task_type_t app_type, 
     edge_task_segment_t app_segment, 
-    unsigned MAE2EL, 
+    unsigned deadline_ms, 
     uint8_t delay_weight, 
     uint8_t energy_weight, 
     const char *const pcHost, 
@@ -1091,7 +1108,7 @@ int _CreateTaskPinnedToCore_(
             : -1,
         pcExec,
         xCoreID,
-        MAE2EL,
+        deadline_ms,
         delay_weight,
         energy_weight,
         xPeriod,
@@ -1121,7 +1138,7 @@ edge_task_creation_result_t CreateEATaskPinnedToCoreEx(
     const uint32_t MemStackDepthServer,
     const uint8_t CoreID,
     edge_task_type_t AppType,
-    unsigned MAE2EL,
+    unsigned deadline_ms,
     uint8_t DelaySensibility,
     uint8_t EnergySensibility,
     edge_task_execution_site_t DefaultExecutionSite,
@@ -1217,7 +1234,7 @@ edge_task_creation_result_t CreateEATaskPinnedToCoreEx(
             CoreID,
             AppType,
             CLIENT_SEGMENT,
-            MAE2EL,
+            deadline_ms,
             DelaySensibility,
             EnergySensibility,
             HostName,
@@ -1251,7 +1268,7 @@ edge_task_creation_result_t CreateEATaskPinnedToCoreEx(
                 CoreID,
                 AppType,
                 SERVER_SEGMENT,
-                MAE2EL,
+                deadline_ms,
                 DelaySensibility,
                 EnergySensibility,
                 HostName,
@@ -1293,7 +1310,7 @@ edge_task_creation_result_t CreateEATaskPinnedToCoreEx(
             CoreID,
             AppType,
             UNIQUE_SEGMENT,
-            MAE2EL,
+            deadline_ms,
             DelaySensibility,
             EnergySensibility,
             "0.0.0.0",
@@ -1340,7 +1357,7 @@ int CreateEATaskPinnedToCore(
     const uint32_t MemStackDepthServer,
     const uint8_t CoreID,
     edge_task_type_t AppType,
-    unsigned MAE2EL,
+    unsigned deadline_ms,
     uint8_t DelaySensibility,
     uint8_t EnergySensibility,
     edge_task_execution_site_t DefaultExecutionSite,
@@ -1359,7 +1376,7 @@ int CreateEATaskPinnedToCore(
         MemStackDepthServer,
         CoreID,
         AppType,
-        MAE2EL,
+        deadline_ms,
         DelaySensibility,
         EnergySensibility,
         DefaultExecutionSite,

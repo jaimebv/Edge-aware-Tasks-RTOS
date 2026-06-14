@@ -122,7 +122,7 @@ typedef struct {
     int32_t                 task_index;
     int32_t                 peer_index;
     uint32_t                period;
-    unsigned                MAE2EL;
+    unsigned                deadline_ms;
     unsigned                WCET;
     edge_task_execution_site_t exec_site;
     uint8_t                 delay_weight;
@@ -184,7 +184,7 @@ typedef struct {
   edge_task_pair_spec_t pair_spec;
   const char *host_name;
   uint32_t period_ms;
-  unsigned mae2el;
+  unsigned deadline_ms;
   uint8_t delay_weight;
   uint8_t energy_weight;
   unsigned client_wcet;
@@ -274,7 +274,7 @@ int _CreateTaskPinnedToCore_(
     const uint8_t xCoreID, 
     edge_task_type_t app_type, 
     edge_task_segment_t app_segment, 
-    unsigned MAE2EL, 
+    unsigned deadline_ms, 
     uint8_t delay_weight, 
     uint8_t energy_weight, 
     const char *const pcHost, 
@@ -299,7 +299,7 @@ int CreateEATaskPinnedToCore(
     const uint32_t MemStackDepthServer, 
     const uint8_t CoreID, 
     edge_task_type_t AppType, 
-    unsigned MAE2EL, 
+    unsigned deadline_ms, 
     uint8_t DelaySensibility, 
     uint8_t EnergySensibility, 
     edge_task_execution_site_t DefaultExecutionSite, 
@@ -324,7 +324,7 @@ edge_task_creation_result_t CreateEATaskPinnedToCoreEx(
     const uint32_t MemStackDepthServer,
     const uint8_t CoreID,
     edge_task_type_t AppType,
-    unsigned MAE2EL,
+    unsigned deadline_ms,
     uint8_t DelaySensibility,
     uint8_t EnergySensibility,
     edge_task_execution_site_t DefaultExecutionSite,

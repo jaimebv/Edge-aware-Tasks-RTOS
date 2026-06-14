@@ -18,7 +18,7 @@
 #define TEST_PUBLIC_MODEL_CORE_ID       0U
 #define TEST_PUBLIC_MODEL_STACK         2048U
 #define TEST_PUBLIC_MODEL_PERIOD_MS     1000U
-#define TEST_PUBLIC_MODEL_MAE2EL        1000U
+#define TEST_PUBLIC_MODEL_DEADLINE_MS    1000U
 #define TEST_PUBLIC_MODEL_DELAY_WEIGHT  50U
 #define TEST_PUBLIC_MODEL_ENERGY_WEIGHT 50U
 
@@ -117,7 +117,7 @@ static void public_task_model_local_creation(void)
     spec.pair_spec = kPublicModelPairSpec;
     spec.host_name = "0.0.0.0";
     spec.period_ms = TEST_PUBLIC_MODEL_PERIOD_MS;
-    spec.mae2el = TEST_PUBLIC_MODEL_MAE2EL;
+    spec.deadline_ms = TEST_PUBLIC_MODEL_DEADLINE_MS;
     spec.delay_weight = TEST_PUBLIC_MODEL_DELAY_WEIGHT;
     spec.energy_weight = TEST_PUBLIC_MODEL_ENERGY_WEIGHT;
     spec.client_wcet = 120U;
@@ -161,7 +161,7 @@ static void public_task_model_pair_creation(void)
     spec.pair_spec = kPublicModelPairSpec;
     spec.host_name = "127.0.0.1";
     spec.period_ms = TEST_PUBLIC_MODEL_PERIOD_MS;
-    spec.mae2el = TEST_PUBLIC_MODEL_MAE2EL;
+    spec.deadline_ms = TEST_PUBLIC_MODEL_DEADLINE_MS;
     spec.delay_weight = TEST_PUBLIC_MODEL_DELAY_WEIGHT;
     spec.energy_weight = TEST_PUBLIC_MODEL_ENERGY_WEIGHT;
     spec.client_wcet = 200U;

@@ -46,7 +46,7 @@ void test_runtime_api_run(void);
 #define TEST_CLIENT_WCET         200U
 #define TEST_SERVER_WCET         800U
 #define TEST_LOCAL_WCET          150U
-#define TEST_MAE2EL_MS           1000U
+#define TEST_TASK_DEADLINE_MS    1000U
 #define TEST_DELAY_SENSITIVITY   50U
 #define TEST_ENERGY_SENSITIVITY  50U
 
@@ -404,7 +404,7 @@ static bool create_pair_task(const char *base_name, edge_task_type_t app_type, e
                TEST_SERVER_STACK,
                TEST_CORE_ID,
                app_type,
-               TEST_MAE2EL_MS,
+               TEST_TASK_DEADLINE_MS,
                TEST_DELAY_SENSITIVITY,
                TEST_ENERGY_SENSITIVITY,
                site,
@@ -428,7 +428,7 @@ static bool create_local_task(const char *base_name)
                TEST_LOCAL_STACK,
                TEST_CORE_ID,
                LOCAL,
-               TEST_MAE2EL_MS,
+               TEST_TASK_DEADLINE_MS,
                TEST_DELAY_SENSITIVITY,
                TEST_ENERGY_SENSITIVITY,
                LOCAL_EXECUTION,
@@ -471,7 +471,7 @@ static void test_failed_queue_allocation(void)
         TEST_SERVER_STACK,
         TEST_CORE_ID,
         ENRICHED,
-        TEST_MAE2EL_MS,
+        TEST_TASK_DEADLINE_MS,
         TEST_DELAY_SENSITIVITY,
         TEST_ENERGY_SENSITIVITY,
         LOCAL_EXECUTION,
@@ -524,7 +524,7 @@ static void test_strong_rollback_semantics(void)
         TEST_SERVER_STACK,
         TEST_CORE_ID,
         ENRICHED,
-        TEST_MAE2EL_MS,
+        TEST_TASK_DEADLINE_MS,
         TEST_DELAY_SENSITIVITY,
         TEST_ENERGY_SENSITIVITY,
         LOCAL_EXECUTION,
@@ -547,7 +547,7 @@ static void test_strong_rollback_semantics(void)
         TEST_SERVER_STACK,
         TEST_CORE_ID,
         ENRICHED,
-        TEST_MAE2EL_MS,
+        TEST_TASK_DEADLINE_MS,
         TEST_DELAY_SENSITIVITY,
         TEST_ENERGY_SENSITIVITY,
         LOCAL_EXECUTION,
@@ -572,7 +572,7 @@ static void test_strong_rollback_semantics(void)
         TEST_SERVER_STACK,
         TEST_CORE_ID,
         ENRICHED,
-        TEST_MAE2EL_MS,
+        TEST_TASK_DEADLINE_MS,
         TEST_DELAY_SENSITIVITY,
         TEST_ENERGY_SENSITIVITY,
         LOCAL_EXECUTION,
@@ -595,7 +595,7 @@ static void test_strong_rollback_semantics(void)
         TEST_SERVER_STACK,
         TEST_CORE_ID,
         ENRICHED,
-        TEST_MAE2EL_MS,
+        TEST_TASK_DEADLINE_MS,
         TEST_DELAY_SENSITIVITY,
         TEST_ENERGY_SENSITIVITY,
         LOCAL_EXECUTION,
@@ -620,7 +620,7 @@ static void test_strong_rollback_semantics(void)
         TEST_LOCAL_STACK,
         TEST_CORE_ID,
         LOCAL,
-        TEST_MAE2EL_MS,
+        TEST_TASK_DEADLINE_MS,
         TEST_DELAY_SENSITIVITY,
         TEST_ENERGY_SENSITIVITY,
         LOCAL_EXECUTION,
@@ -643,7 +643,7 @@ static void test_strong_rollback_semantics(void)
         TEST_LOCAL_STACK,
         TEST_CORE_ID,
         LOCAL,
-        TEST_MAE2EL_MS,
+        TEST_TASK_DEADLINE_MS,
         TEST_DELAY_SENSITIVITY,
         TEST_ENERGY_SENSITIVITY,
         LOCAL_EXECUTION,
@@ -709,7 +709,7 @@ static void test_invalid_and_null_paths(void)
                     TEST_LOCAL_STACK,
                     TEST_CORE_ID,
                     LOCAL,
-                    TEST_MAE2EL_MS,
+                    TEST_TASK_DEADLINE_MS,
                     TEST_DELAY_SENSITIVITY,
                     TEST_ENERGY_SENSITIVITY,
                     LOCAL_EXECUTION,

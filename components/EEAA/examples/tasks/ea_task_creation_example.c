@@ -70,7 +70,7 @@ static edge_task_spec_t make_task_spec(void)
     spec.pair_spec = kTaskPairSpec;
     spec.host_name = "127.0.0.1";
     spec.period_ms = TASK_PAIR_PERIOD_MS;
-    spec.mae2el = 1000U;
+    spec.deadline_ms = 1000U;
     spec.delay_weight = 50U;
     spec.energy_weight = 50U;
     spec.client_wcet = 200U;

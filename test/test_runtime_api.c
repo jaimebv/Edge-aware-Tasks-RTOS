@@ -22,7 +22,7 @@
 #define TEST_RUNTIME_PERIOD_MS        1000U
 #define TEST_RUNTIME_CLIENT_WCET      200U
 #define TEST_RUNTIME_SERVER_WCET      200U
-#define TEST_RUNTIME_MAE2EL           1000U
+#define TEST_RUNTIME_DEADLINE_MS      1000U
 #define TEST_RUNTIME_DELAY_WEIGHT     50U
 #define TEST_RUNTIME_ENERGY_WEIGHT    50U
 
@@ -92,7 +92,7 @@ static edge_task_creation_result_t create_runtime_pair(const char *task_name)
     spec.pair_spec = kRuntimePairSpec;
     spec.host_name = "LOCAL_RUNTIME";
     spec.period_ms = TEST_RUNTIME_PERIOD_MS;
-    spec.mae2el = TEST_RUNTIME_MAE2EL;
+    spec.deadline_ms = TEST_RUNTIME_DEADLINE_MS;
     spec.delay_weight = TEST_RUNTIME_DELAY_WEIGHT;
     spec.energy_weight = TEST_RUNTIME_ENERGY_WEIGHT;
     spec.client_wcet = TEST_RUNTIME_CLIENT_WCET;

@@ -58,7 +58,7 @@ static edge_task_spec_t make_runtime_example_spec(void)
     spec.pair_spec = kExamplePairSpec;
     spec.host_name = "LOCAL_RUNTIME";
     spec.period_ms = 1000U;
-    spec.mae2el = 1000U;
+    spec.deadline_ms = 1000U;
     spec.delay_weight = 50U;
     spec.energy_weight = 50U;
     spec.client_wcet = 200U;
