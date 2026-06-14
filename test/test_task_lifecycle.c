@@ -31,6 +31,7 @@
 void test_offloader_policy_suite(void);
 void test_offloader_controller_suite(void);
 void test_task_public_model_run(void);
+void test_task_happy_path_run(void);
 void test_runtime_api_run(void);
 
 
@@ -971,6 +972,7 @@ void app_main(void)
     printf("=== Task lifecycle test harness ===\n");
     fflush(stdout);
     test_task_public_model_run();
+    test_task_happy_path_run();
     task_manager_init();
     test_helpers_reset_counts();
     reset_runtime_indices();

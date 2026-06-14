@@ -55,6 +55,23 @@ The public task spec is the developer-facing shape for v1:
 `CreateEATaskPinnedToCoreEx()` remains available as the lower-level creation
 entry point for compatibility and internal use.
 
+### 3.0 Convenience helpers
+
+The task manager also exposes a small happy-path layer so application code can
+build common declarations without manually assigning every field:
+
+- `edge_task_spec_init_enriched()`
+- `edge_task_spec_init_local()`
+- `edge_task_spec_set_priority()`
+- `edge_task_spec_set_core_id()`
+- `edge_task_spec_set_local_host_label()`
+- `edge_task_spec_set_deadline_ms()`
+- `edge_task_spec_set_wcet()`
+- `edge_task_spec_set_execution_site_local()`
+
+These helpers do not create a new runtime path. They simply pre-fill the public
+spec with the normal local-first defaults and then reuse `CreateEATaskFromSpecEx()`.
+
 ### 3.1 Inputs
 
 A task creation call provides:

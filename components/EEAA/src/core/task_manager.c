@@ -78,6 +78,36 @@ static void edge_task_spec_set_defaults(edge_task_spec_t *spec)
     spec->pair_spec.message_size = sizeof(int);
 }
 
+static void edge_task_spec_init_common(
+    edge_task_spec_t *spec,
+    const char *task_name,
+    eaPort_task_function_t client_task_code,
+    eaPort_task_function_t server_task_code,
+    uint32_t client_stack_depth,
+    uint32_t server_stack_depth,
+    uint32_t period_ms,
+    const edge_task_pair_spec_t *pair_spec,
+    edge_task_type_t app_type)
+{
+    edge_task_spec_init(spec);
+    if (spec == NULL) {
+        return;
+    }
+
+    spec->task_name = task_name;
+    spec->client_task_code = client_task_code;
+    spec->server_task_code = server_task_code;
+    spec->client_stack_depth = client_stack_depth;
+    spec->server_stack_depth = server_stack_depth;
+    spec->period_ms = period_ms;
+    spec->app_type = app_type;
+    spec->default_execution_site = LOCAL_EXECUTION;
+    spec->deadline_ms = period_ms;
+    if (pair_spec != NULL) {
+        spec->pair_spec = *pair_spec;
+    }
+}
+
 static bool edge_task_spec_is_valid(const edge_task_spec_t *spec)
 {
     if (spec == NULL) {
@@ -123,6 +153,97 @@ static unsigned edge_task_spec_resolve_deadline_ms(const edge_task_spec_t *spec)
 void edge_task_spec_init(edge_task_spec_t *spec)
 {
     edge_task_spec_set_defaults(spec);
+}
+
+void edge_task_spec_init_enriched(
+    edge_task_spec_t *spec,
+    const char *task_name,
+    eaPort_task_function_t client_task_code,
+    eaPort_task_function_t server_task_code,
+    uint32_t client_stack_depth,
+    uint32_t server_stack_depth,
+    uint32_t period_ms,
+    const edge_task_pair_spec_t *pair_spec)
+{
+    edge_task_spec_init_common(
+        spec,
+        task_name,
+        client_task_code,
+        server_task_code,
+        client_stack_depth,
+        server_stack_depth,
+        period_ms,
+        pair_spec,
+        ENRICHED);
+}
+
+void edge_task_spec_init_local(
+    edge_task_spec_t *spec,
+    const char *task_name,
+    eaPort_task_function_t task_code,
+    uint32_t stack_depth,
+    uint32_t period_ms,
+    const edge_task_pair_spec_t *pair_spec)
+{
+    edge_task_spec_init_common(
+        spec,
+        task_name,
+        task_code,
+        task_code,
+        stack_depth,
+        stack_depth,
+        period_ms,
+        pair_spec,
+        LOCAL);
+}
+
+void edge_task_spec_set_priority(edge_task_spec_t *spec, uint8_t priority)
+{
+    if (spec != NULL) {
+        spec->priority = priority;
+    }
+}
+
+void edge_task_spec_set_core_id(edge_task_spec_t *spec, uint8_t core_id)
+{
+    if (spec != NULL) {
+        spec->core_id = core_id;
+    }
+}
+
+void edge_task_spec_set_local_host_label(edge_task_spec_t *spec, const char *local_host_label)
+{
+    if (spec == NULL) {
+        return;
+    }
+
+    spec->local_host_label = (local_host_label != NULL && local_host_label[0] != '\0')
+        ? local_host_label
+        : "LOCAL_RUNTIME";
+}
+
+void edge_task_spec_set_deadline_ms(edge_task_spec_t *spec, uint32_t deadline_ms)
+{
+    if (spec != NULL) {
+        spec->deadline_ms = deadline_ms;
+    }
+}
+
+void edge_task_spec_set_wcet(edge_task_spec_t *spec, unsigned client_wcet, unsigned server_wcet)
+{
+    if (spec == NULL) {
+        return;
+    }
+
+    spec->client_wcet = client_wcet;
+    spec->server_wcet = server_wcet;
+}
+
+void edge_task_spec_set_execution_site_local(edge_task_spec_t *spec)
+{
+    if (spec != NULL) {
+        spec->default_execution_site = LOCAL_EXECUTION;
+    }
 }
 
 bool edge_task_spec_validate(const edge_task_spec_t *spec)

@@ -45,39 +45,30 @@ static edge_task_spec_t make_runtime_example_spec(void)
 {
     edge_task_spec_t spec;
 
-    edge_task_spec_init(&spec);
-    spec.task_name = "RuntimeApi";
-    spec.priority = 2U;
-    spec.client_task_code = example_client_task;
-    spec.server_task_code = example_server_task;
-    spec.client_stack_depth = 2048U;
-    spec.server_stack_depth = 2048U;
-    spec.core_id = 0U;
-    spec.app_type = ENRICHED;
-    spec.pair_spec = kExamplePairSpec;
-    spec.period_ms = 1000U;
-    spec.delay_weight = 50U;
-    spec.energy_weight = 50U;
+    edge_task_spec_init_enriched(
+        &spec,
+        "RuntimeApi",
+        example_client_task,
+        example_server_task,
+        2048U,
+        2048U,
+        1000U,
+        &kExamplePairSpec);
+    edge_task_spec_set_priority(&spec, 2U);
+    edge_task_spec_set_local_host_label(&spec, "LOCAL_RUNTIME");
 
     return spec;
 }
 
 void app_main(void)
 {
-    edge_runtime_config_t runtime_config;
     edge_runtime_status_t runtime_status = {0};
     edge_task_creation_result_t result = {0};
     edge_task_spec_t spec = make_runtime_example_spec();
 
     printf("=== Runtime facade example ===\n");
 
-    edge_runtime_config_init(&runtime_config);
-    runtime_config.offloader.local_host_label = "LOCAL_RUNTIME";
-    runtime_config.offloader.remote_host_label = "REMOTE_RUNTIME";
-    runtime_config.offloader.mode = EDGE_OFFLOADER_MODE_PER_TASK;
-    runtime_config.offloader.control_period_ms = 100U;
-
-    if (!edge_runtime_start(&runtime_config)) {
+    if (!edge_runtime_start_local_first("LOCAL_RUNTIME", "REMOTE_RUNTIME")) {
         printf("Runtime start failed.\n");
         return;
     }

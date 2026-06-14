@@ -87,6 +87,28 @@ void edge_runtime_config_init(edge_runtime_config_t *config);
 bool edge_runtime_start(const edge_runtime_config_t *config);
 
 /**
+ * @brief Start the runtime with the built-in default configuration.
+ *
+ * This is the shortest happy-path entry point for applications that do not
+ * need to customize the runtime controller.
+ *
+ * @return true when the runtime was started or was already running.
+ */
+bool edge_runtime_start_default(void);
+
+/**
+ * @brief Start the runtime with explicit local and remote host labels.
+ *
+ * This keeps the rest of the runtime configuration on the default local-first
+ * path while letting the caller choose the routing labels.
+ *
+ * @param[in] local_host_label Label used for local execution.
+ * @param[in] remote_host_label Label used for remote execution.
+ * @return true when the runtime was started or was already running.
+ */
+bool edge_runtime_start_local_first(const char *local_host_label, const char *remote_host_label);
+
+/**
  * @brief Stop the runtime facade and shut down the controller layer.
  *
  * The task manager-owned runtime objects remain available for cleanup by the

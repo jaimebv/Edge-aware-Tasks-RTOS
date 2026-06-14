@@ -49,5 +49,21 @@ It complements it:
 - `edge_runtime_start()` activates the surrounding runtime services
 - `edge_runtime_status()` reports the aggregate state
 
+## Happy path helpers
+
+The v1 surface also exposes small convenience wrappers so common application
+code does not have to assemble a full runtime config by hand:
+
+- `edge_runtime_start_default()`
+- `edge_runtime_start_local_first()`
+- `edge_task_spec_init_enriched()`
+- `edge_task_spec_init_local()`
+- `edge_task_spec_set_local_host_label()`
+- `edge_task_spec_set_deadline_ms()`
+- `edge_task_spec_set_wcet()`
+
+These helpers are intentionally thin. They fill the standard defaults while
+still forwarding to the same underlying runtime and task-manager code.
+
 That separation keeps the task model declarative and lets the runtime facade
 own lifecycle control.

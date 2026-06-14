@@ -101,6 +101,26 @@ bool edge_runtime_start(const edge_runtime_config_t *config)
     return true;
 }
 
+bool edge_runtime_start_default(void)
+{
+    return edge_runtime_start(NULL);
+}
+
+bool edge_runtime_start_local_first(const char *local_host_label, const char *remote_host_label)
+{
+    edge_runtime_config_t config;
+
+    edge_runtime_config_init(&config);
+    if (local_host_label != NULL) {
+        config.offloader.local_host_label = local_host_label;
+    }
+    if (remote_host_label != NULL) {
+        config.offloader.remote_host_label = remote_host_label;
+    }
+
+    return edge_runtime_start(&config);
+}
+
 bool edge_runtime_stop(void)
 {
     if (!g_runtime_state.configured && !g_runtime_state.running) {

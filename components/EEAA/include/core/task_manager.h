@@ -371,6 +371,66 @@ edge_task_creation_result_t CreateEATaskPinnedToCoreEx(
 void edge_task_spec_init(edge_task_spec_t *spec);
 
 /**
+ * @brief Initialize a happy-path enriched task specification.
+ *
+ * This helper fills the common defaults for a paired task so application code
+ * only needs to provide the task identity, task functions, stack sizes,
+ * period, and pair contract.
+ */
+void edge_task_spec_init_enriched(
+    edge_task_spec_t *spec,
+    const char *task_name,
+    eaPort_task_function_t client_task_code,
+    eaPort_task_function_t server_task_code,
+    uint32_t client_stack_depth,
+    uint32_t server_stack_depth,
+    uint32_t period_ms,
+    const edge_task_pair_spec_t *pair_spec);
+
+/**
+ * @brief Initialize a happy-path local task specification.
+ *
+ * This helper fills the local-first defaults for a single-task declaration.
+ */
+void edge_task_spec_init_local(
+    edge_task_spec_t *spec,
+    const char *task_name,
+    eaPort_task_function_t task_code,
+    uint32_t stack_depth,
+    uint32_t period_ms,
+    const edge_task_pair_spec_t *pair_spec);
+
+/**
+ * @brief Update the suggested task priority.
+ */
+void edge_task_spec_set_priority(edge_task_spec_t *spec, uint8_t priority);
+
+/**
+ * @brief Update the suggested core affinity.
+ */
+void edge_task_spec_set_core_id(edge_task_spec_t *spec, uint8_t core_id);
+
+/**
+ * @brief Update the local host label in a public task specification.
+ */
+void edge_task_spec_set_local_host_label(edge_task_spec_t *spec, const char *local_host_label);
+
+/**
+ * @brief Update the deadline in milliseconds.
+ */
+void edge_task_spec_set_deadline_ms(edge_task_spec_t *spec, uint32_t deadline_ms);
+
+/**
+ * @brief Update the WCET budgets for the client and server halves.
+ */
+void edge_task_spec_set_wcet(edge_task_spec_t *spec, unsigned client_wcet, unsigned server_wcet);
+
+/**
+ * @brief Force the task to use the local execution site.
+ */
+void edge_task_spec_set_execution_site_local(edge_task_spec_t *spec);
+
+/**
  * @brief Validate a public task specification.
  *
  * @param[in] spec Public task specification to inspect.
