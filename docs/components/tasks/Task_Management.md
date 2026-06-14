@@ -43,8 +43,17 @@ is locally executed and some work is split between cooperating execution roles.
 
 ## 3. Creation flow
 
-The creation API is centered on `CreateEATaskPinnedToCoreEx()` and the legacy
-wrapper `CreateEATaskPinnedToCore()`.
+The creation API is centered on the public task spec `edge_task_spec_t`,
+`CreateEATaskFromSpecEx()`, and the legacy wrapper `CreateEATaskPinnedToCore()`.
+
+The public task spec is the developer-facing shape for v1:
+
+- it freezes the fields that describe a task declaration
+- it validates the structure before it reaches the task manager internals
+- it maps cleanly onto the existing creation path
+
+`CreateEATaskPinnedToCoreEx()` remains available as the lower-level creation
+entry point for compatibility and internal use.
 
 ### 3.1 Inputs
 

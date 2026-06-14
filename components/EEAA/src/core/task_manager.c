@@ -62,6 +62,123 @@ __attribute__((weak)) bool edge_task_manager_test_hook_should_fail_creation(
     return false;
 }
 
+static void edge_task_spec_set_defaults(edge_task_spec_t *spec)
+{
+    if (spec == NULL) {
+        return;
+    }
+
+    memset(spec, 0, sizeof(*spec));
+    spec->priority = 1U;
+    spec->core_id = eaPort_NO_AFFINITY;
+    spec->app_type = LOCAL;
+    spec->default_execution_site = LOCAL_EXECUTION;
+    spec->host_name = "0.0.0.0";
+    spec->pair_spec.queue_depth = 1U;
+    spec->pair_spec.message_size = sizeof(int);
+}
+
+static bool edge_task_spec_is_valid(const edge_task_spec_t *spec)
+{
+    if (spec == NULL) {
+        return false;
+    }
+
+    if (spec->task_name == NULL || spec->task_name[0] == '\0') {
+        return false;
+    }
+
+    if (spec->client_task_code == NULL || spec->server_task_code == NULL) {
+        return false;
+    }
+
+    if (spec->client_stack_depth == 0U || spec->server_stack_depth == 0U) {
+        return false;
+    }
+
+    if (spec->pair_spec.queue_depth == 0U || spec->pair_spec.message_size == 0U) {
+        return false;
+    }
+
+    if (spec->host_name == NULL || spec->host_name[0] == '\0') {
+        return false;
+    }
+
+    if (spec->period_ms == 0U) {
+        return false;
+    }
+
+    if (spec->client_wcet == 0U || spec->server_wcet == 0U) {
+        return false;
+    }
+
+    return true;
+}
+
+void edge_task_spec_init(edge_task_spec_t *spec)
+{
+    edge_task_spec_set_defaults(spec);
+}
+
+bool edge_task_spec_validate(const edge_task_spec_t *spec)
+{
+    return edge_task_spec_is_valid(spec);
+}
+
+static edge_task_creation_result_t edge_task_create_from_spec_impl(const edge_task_spec_t *spec)
+{
+    edge_task_creation_result_t result = {
+        .task_index = -1,
+        .failure_reason = EDGE_TASK_CREATION_FAILURE_NONE,
+    };
+    const char *host_name = NULL;
+
+    if (!edge_task_spec_is_valid(spec)) {
+        result.failure_reason = EDGE_TASK_CREATION_FAILURE_INVALID_SPEC;
+        return result;
+    }
+
+    host_name = spec->host_name;
+
+    result = CreateEATaskPinnedToCoreEx(
+        spec->task_name,
+        spec->priority,
+        spec->client_task_code,
+        spec->server_task_code,
+        spec->client_stack_depth,
+        spec->server_stack_depth,
+        spec->core_id,
+        spec->app_type,
+        spec->mae2el,
+        spec->delay_weight,
+        spec->energy_weight,
+        spec->default_execution_site,
+        &spec->pair_spec,
+        host_name,
+        spec->period_ms,
+        spec->client_wcet,
+        spec->server_wcet);
+
+    return result;
+}
+
+edge_task_creation_result_t CreateEATaskFromSpecEx(const edge_task_spec_t *spec)
+{
+    return edge_task_create_from_spec_impl(spec);
+}
+
+int CreateEATaskFromSpec(const edge_task_spec_t *spec)
+{
+    edge_task_creation_result_t result = edge_task_create_from_spec_impl(spec);
+
+    if (result.failure_reason != EDGE_TASK_CREATION_FAILURE_NONE) {
+        printf("Error: Task creation failed (%s).\n", edge_task_creation_failure_reason_to_string(result.failure_reason));
+        return -1;
+    }
+
+    return 0;
+}
+
 
 
 static edge_task_monitor_hot_t monitoredTaskHot[CONFIG_EA_MAX_TASKS];

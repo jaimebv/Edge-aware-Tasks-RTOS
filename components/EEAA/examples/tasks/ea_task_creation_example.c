@@ -14,6 +14,9 @@ static const edge_task_pair_spec_t kTaskPairSpec = {
     .message_size = TASK_PAIR_MESSAGE_SIZE,
 };
 
+static void task_sensor_client(void *pvParameters);
+static void task_processor_server(void *pvParameters);
+
 static void task_sensor_client(void *pvParameters)
 {
     edge_task_pair_runtime_t *runtime = (edge_task_pair_runtime_t *)pvParameters;
@@ -48,6 +51,32 @@ static void task_sensor_client(void *pvParameters)
             eaPort_Delay_Milliseconds(100);
         }
     }
+}
+
+static edge_task_spec_t make_task_spec(void)
+{
+    edge_task_spec_t spec;
+
+    edge_task_spec_init(&spec);
+    spec.task_name = "SensorTask";
+    spec.priority = 2U;
+    spec.client_task_code = task_sensor_client;
+    spec.server_task_code = task_processor_server;
+    spec.client_stack_depth = 2048U;
+    spec.server_stack_depth = 2048U;
+    spec.core_id = 0U;
+    spec.app_type = ENRICHED;
+    spec.default_execution_site = LOCAL_EXECUTION;
+    spec.pair_spec = kTaskPairSpec;
+    spec.host_name = "127.0.0.1";
+    spec.period_ms = TASK_PAIR_PERIOD_MS;
+    spec.mae2el = 1000U;
+    spec.delay_weight = 50U;
+    spec.energy_weight = 50U;
+    spec.client_wcet = 200U;
+    spec.server_wcet = 800U;
+
+    return spec;
 }
 
 static void task_processor_server(void *pvParameters)
@@ -89,25 +118,8 @@ void app_main(void)
     task_manager_init();
 
     printf("Creating dynamic edge task pair...\n");
-    int ret = CreateEATaskPinnedToCore(
-        "SensorTask",
-        2,
-        task_sensor_client,
-        task_processor_server,
-        2048,
-        2048,
-        0,
-        ENRICHED,
-        1000,
-        50,
-        50,
-        LOCAL_EXECUTION,
-        &kTaskPairSpec,
-        "127.0.0.1",
-        TASK_PAIR_PERIOD_MS,
-        200,
-        800
-    );
+    edge_task_spec_t task_spec = make_task_spec();
+    int ret = CreateEATaskFromSpec(&task_spec);
 
     if (ret == 0) {
         printf("Dynamic task pair created successfully.\n");
