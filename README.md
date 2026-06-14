@@ -10,6 +10,7 @@ It is centered on the `EEAA` component, which wraps FreeRTOS primitives behind a
 - **Edge-task modeling** for local, enriched, and remote execution styles
 - **Task monitoring metadata** for host, relation, core, period, WCET, latency, and runtime tracking
 - **Client/server task pairing** with queue-based message exchange
+- **Runtime facade** for product-grade start/stop/status control over the task manager and offloader
 - **Reusable examples** showing task creation, scheduling, synchronization, and memory management
 
 ## How it works
@@ -19,6 +20,7 @@ The project builds a thin abstraction on top of FreeRTOS:
 - `port/port_interface_types.h` defines RTOS-agnostic handles and status codes.
 - `port/port_rtos_freertos.c` maps those abstractions to native FreeRTOS APIs.
 - `core/task_manager.c` creates and tracks edge-aware task pairs, including queues and per-task metadata.
+- `api/runtime.c` wraps the task manager and offloader behind a product-grade runtime facade.
 - `examples/` demonstrates how to use the layer in real flows.
 
 The main task model uses two cooperating roles:
@@ -70,6 +72,7 @@ Read the documentation hub in /docs:
 ## Example entry points
 
 - `components/EEAA/examples/tasks/ea_task_creation_example.c` — dynamic edge-task pair creation
+- `components/EEAA/examples/api/ea_runtime_api_example.c` — runtime facade usage flow
 - `components/EEAA/examples/port/port_rtos_example.c` — RTOS abstraction demos
 - `components/EEAA/examples/port/port_board_example.c` — board abstraction demo
 

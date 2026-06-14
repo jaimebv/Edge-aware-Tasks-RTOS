@@ -94,6 +94,12 @@ ESP32 + FreeRTOS + hardware
   - applies LOCAL or REMOTE routing through task-manager helpers only
   - keeps route mutation separate from the task manager implementation
 
+- **Runtime facade**
+  - owns the developer-facing runtime lifecycle
+  - configures and starts the task manager plus offloader together
+  - exposes runtime status and controller ticks through a stable public API
+  - keeps application code away from task-manager and offloader ownership
+
 - **EEAA task manager**
   - owns task creation policy
   - owns runtime object lifetimes
@@ -203,7 +209,22 @@ It owns:
 It is the module that most directly defines the user-visible semantics of the
 framework.
 
-### 5.2 `port/port_interface_types`
+### 5.2 `api/runtime`
+
+This is the product-grade facade for v1 applications.
+
+It owns:
+
+- runtime configuration defaults
+- runtime start/stop control
+- a thin controller tick wrapper
+- runtime status snapshots for application code and tests
+
+It does not own task creation or routing logic itself.
+Instead, it coordinates the task manager and offloader so application code can
+use one stable entry point.
+
+### 5.3 `port/port_interface_types`
 
 This defines the portable types used by the rest of the system.
 
@@ -217,7 +238,7 @@ It exists so the code can speak in RTOS-neutral terms:
 - task state enums
 - return codes
 
-### 5.3 `port/port_rtos_freertos`
+### 5.4 `port/port_rtos_freertos`
 
 This maps the portable abstractions to FreeRTOS.
 
