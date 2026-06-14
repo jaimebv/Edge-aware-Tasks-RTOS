@@ -126,18 +126,26 @@ Those helpers keep the task manager as the single owner of runtime mutation.
 
 ## 6. Policy model
 
-The first policy is conservative and local-first.
+The v1 policy layer is now split into scheduler-aware built-ins plus room for
+custom policies.
 
-It keeps a client local unless the observed latency is clearly above the task
-WCET-based threshold.
+The default built-in policy is fixed-priority (`FP`). A rate-monotonic (`RM`)
+policy is available as a second built-in path and uses the same fixed-
+priority foundation but a tighter period-driven decision rule.
 
-That gives the controller a deterministic baseline before any richer decision
-logic is introduced.
+EDF is not treated as a built-in FreeRTOS scheduler path. It can still be
+represented by a custom policy later, but the controller does not assume it
+as an out-of-the-box mode.
 
-The policy layer now supports both:
+The controller does not own schedulability math. It passes candidate data and
+the active scheduler model into the selected policy, then applies only
+structurally valid results. If the policy rejects a plan, the controller
+leaves runtime state unchanged.
+
+The policy layer supports both:
 
 - per-candidate evaluation for compatibility and direct routing helpers
-- batch planning for schedulability-aware vector decisions
+- batch planning for scheduler-aware vector decisions
 
 ## 7. Regression coverage
 
