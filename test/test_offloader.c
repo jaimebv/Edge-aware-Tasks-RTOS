@@ -34,26 +34,26 @@ static const edge_task_pair_spec_t kOffloaderPairSpec = {
     .message_size = sizeof(int),
 };
 
-static volatile bool g_offloader_client_ready;
-static volatile bool g_offloader_server_ready;
+static volatile uint32_t g_offloader_client_ready_count;
+static volatile uint32_t g_offloader_server_ready_count;
 
-static bool wait_until(volatile bool *flag, uint32_t timeout_ms)
+static bool wait_until_count(volatile uint32_t *counter, uint32_t min_count, uint32_t timeout_ms)
 {
     const uint32_t step_ms = 10U;
     uint32_t waited = 0U;
 
-    while (!*flag && waited < timeout_ms) {
+    while (*counter < min_count && waited < timeout_ms) {
         eaPort_Delay_Milliseconds(step_ms);
         waited += step_ms;
     }
 
-    return *flag;
+    return *counter >= min_count;
 }
 
 static void reset_ready_flags(void)
 {
-    g_offloader_client_ready = false;
-    g_offloader_server_ready = false;
+    g_offloader_client_ready_count = 0U;
+    g_offloader_server_ready_count = 0U;
 }
 
 static void offloader_client_task(void *pvParameters)
@@ -65,7 +65,7 @@ static void offloader_client_task(void *pvParameters)
         return;
     }
 
-    g_offloader_client_ready = true;
+    ++g_offloader_client_ready_count;
 
     while (1) {
         eaPort_Delay_Milliseconds(1000U);
@@ -81,7 +81,7 @@ static void offloader_server_task(void *pvParameters)
         return;
     }
 
-    g_offloader_server_ready = true;
+    ++g_offloader_server_ready_count;
 
     while (1) {
         eaPort_Delay_Milliseconds(1000U);
@@ -270,8 +270,8 @@ static void test_controller_candidate_collection_and_routing(void)
     expect_true("controller runtime present", runtime != NULL, "runtime missing");
     server_index = edge_task_pair_peer_index(runtime);
     expect_true("controller server index", server_index >= 0, "server index missing");
-    expect_true("controller client ready", wait_until(&g_offloader_client_ready, 5000U), "client task did not start");
-    expect_true("controller server ready", wait_until(&g_offloader_server_ready, 5000U), "server task did not start");
+    expect_true("controller client ready", wait_until_count(&g_offloader_client_ready_count, 1U, 5000U), "client task did not start");
+    expect_true("controller server ready", wait_until_count(&g_offloader_server_ready_count, 1U, 5000U), "server task did not start");
 
     update_task_metrics_OE2EL_by_index(client_index, 100U);
     expect_true("controller candidate count", edge_offloader_collect_candidates(NULL, 0U) == 1U, "candidate count mismatch");
@@ -331,10 +331,10 @@ static void test_controller_batch_vector_routing(void)
 
     client_a = creation_a.task_index;
     client_b = creation_b.task_index;
-    expect_true("batch client a ready", wait_until(&g_offloader_client_ready, 5000U), "client A task did not start");
-    expect_true("batch client b ready", wait_until(&g_offloader_client_ready, 5000U), "client B task did not start");
-    expect_true("batch server a ready", wait_until(&g_offloader_server_ready, 5000U), "server A task did not start");
-    expect_true("batch server b ready", wait_until(&g_offloader_server_ready, 5000U), "server B task did not start");
+    expect_true("batch client a ready", wait_until_count(&g_offloader_client_ready_count, 1U, 5000U), "client A task did not start");
+    expect_true("batch client b ready", wait_until_count(&g_offloader_client_ready_count, 2U, 5000U), "client B task did not start");
+    expect_true("batch server a ready", wait_until_count(&g_offloader_server_ready_count, 1U, 5000U), "server A task did not start");
+    expect_true("batch server b ready", wait_until_count(&g_offloader_server_ready_count, 2U, 5000U), "server B task did not start");
 
     update_task_metrics_OE2EL_by_index(client_a, 100U);
     update_task_metrics_OE2EL_by_index(client_b, 600U);
@@ -383,10 +383,10 @@ static void test_controller_batch_rejects_incomplete_vector(void)
 
     client_a = creation_a.task_index;
     client_b = creation_b.task_index;
-    expect_true("reject batch client a ready", wait_until(&g_offloader_client_ready, 5000U), "reject batch client A did not start");
-    expect_true("reject batch client b ready", wait_until(&g_offloader_client_ready, 5000U), "reject batch client B did not start");
-    expect_true("reject batch server a ready", wait_until(&g_offloader_server_ready, 5000U), "reject batch server A did not start");
-    expect_true("reject batch server b ready", wait_until(&g_offloader_server_ready, 5000U), "reject batch server B did not start");
+    expect_true("reject batch client a ready", wait_until_count(&g_offloader_client_ready_count, 1U, 5000U), "reject batch client A did not start");
+    expect_true("reject batch client b ready", wait_until_count(&g_offloader_client_ready_count, 2U, 5000U), "reject batch client B did not start");
+    expect_true("reject batch server a ready", wait_until_count(&g_offloader_server_ready_count, 1U, 5000U), "reject batch server A did not start");
+    expect_true("reject batch server b ready", wait_until_count(&g_offloader_server_ready_count, 2U, 5000U), "reject batch server B did not start");
 
     update_task_metrics_OE2EL_by_index(client_a, 100U);
     update_task_metrics_OE2EL_by_index(client_b, 600U);
@@ -428,8 +428,8 @@ static void test_controller_rejects_missing_route_labels(void)
     creation = create_offloader_pair("OFLOW2");
     expect_true("reject labels pair create", creation.failure_reason == EDGE_TASK_CREATION_FAILURE_NONE && creation.task_index >= 0, "offloader pair creation failed");
     client_index = creation.task_index;
-    expect_true("reject labels client ready", wait_until(&g_offloader_client_ready, 5000U), "client task did not start");
-    expect_true("reject labels server ready", wait_until(&g_offloader_server_ready, 5000U), "server task did not start");
+    expect_true("reject labels client ready", wait_until_count(&g_offloader_client_ready_count, 1U, 5000U), "client task did not start");
+    expect_true("reject labels server ready", wait_until_count(&g_offloader_server_ready_count, 1U, 5000U), "server task did not start");
     expect_true("reject labels run blocked", edge_offloader_run_for_task_index(client_index) == false, "offloader should reject missing route labels");
 
     expect_true("reject labels destroy pair", edge_task_pair_destroy_by_task_index(client_index, EDGE_TASK_CLEANUP_PAIR) == 1, "reject labels cleanup failed");

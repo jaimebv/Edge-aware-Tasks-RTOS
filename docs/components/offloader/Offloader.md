@@ -142,6 +142,10 @@ the active scheduler model into the selected policy, then applies only
 structurally valid results. If the policy rejects a plan, the controller
 leaves runtime state unchanged.
 
+The built-in policies fail closed on malformed snapshots. If a candidate is
+missing the state required for its policy model, the policy returns an invalid
+input failure instead of silently routing the task locally.
+
 The policy layer supports both:
 
 - per-candidate evaluation for compatibility and direct routing helpers

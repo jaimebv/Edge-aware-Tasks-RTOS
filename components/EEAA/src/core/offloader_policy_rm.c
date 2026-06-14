@@ -15,12 +15,12 @@ static bool offloader_policy_rm_evaluate_route(
         return false;
     }
 
+    if (!candidate->snapshot.valid || candidate->snapshot.period == 0U) {
+        return false;
+    }
+
     result->task_index = candidate->task_index;
     result->route = EDGE_OFFLOADER_ROUTE_LOCAL;
-
-    if (!candidate->snapshot.valid || candidate->snapshot.period == 0U) {
-        return true;
-    }
 
     deadline_threshold = candidate->snapshot.period;
     if (candidate->snapshot.OE2EL >= deadline_threshold) {
@@ -48,7 +48,7 @@ static bool edge_offloader_policy_rm_evaluate(
 
     if (!offloader_policy_rm_evaluate_route(candidate, result)) {
         if (status != NULL) {
-            *status = EDGE_OFFLOADER_POLICY_STATUS_UNSAFE_PLAN;
+            *status = EDGE_OFFLOADER_POLICY_STATUS_INVALID_INPUT;
         }
         return false;
     }
@@ -97,7 +97,7 @@ static bool edge_offloader_policy_rm_plan(
     for (i = 0U; i < candidate_count; ++i) {
         if (!offloader_policy_rm_evaluate_route(&candidates[i], &results[i])) {
             if (status != NULL) {
-                *status = EDGE_OFFLOADER_POLICY_STATUS_UNSAFE_PLAN;
+                *status = EDGE_OFFLOADER_POLICY_STATUS_INVALID_INPUT;
             }
             return false;
         }

@@ -206,6 +206,37 @@ static void test_policy_route_split_by_scheduler(void)
     pass("policy route split by scheduler");
 }
 
+static void test_policy_rejects_invalid_snapshot(void)
+{
+    edge_offloader_candidate_t candidate = {0};
+    edge_offloader_result_t result = {0};
+    edge_offloader_policy_status_t status = EDGE_OFFLOADER_POLICY_STATUS_OK;
+    const edge_offloader_policy_t *fp = edge_offloader_policy_fp();
+    const edge_offloader_policy_t *rm = edge_offloader_policy_rm();
+
+    candidate.task_index = 5;
+    candidate.pair_id = 9U;
+    candidate.snapshot.valid = false;
+    candidate.snapshot.WCET = TEST_PHASE3_CLIENT_WCET;
+    candidate.snapshot.period = TEST_PHASE3_PERIOD_MS;
+    candidate.snapshot.OE2EL = 900U;
+    candidate.runtime = NULL;
+
+    expect_true("invalid snapshot fp reject", fp->evaluate(NULL, &candidate, &result, &status) == false,
+                "fp should reject invalid snapshots");
+    expect_true("invalid snapshot fp status", status == EDGE_OFFLOADER_POLICY_STATUS_INVALID_INPUT,
+                "fp should report invalid input");
+
+    result = (edge_offloader_result_t){0};
+    status = EDGE_OFFLOADER_POLICY_STATUS_OK;
+    expect_true("invalid snapshot rm reject", rm->evaluate(NULL, &candidate, &result, &status) == false,
+                "rm should reject invalid snapshots");
+    expect_true("invalid snapshot rm status", status == EDGE_OFFLOADER_POLICY_STATUS_INVALID_INPUT,
+                "rm should report invalid input");
+
+    pass("policy rejects invalid snapshot");
+}
+
 static void test_controller_rejects_policy_failure_without_mutation(void)
 {
     const edge_offloader_config_t config = {
@@ -254,6 +285,7 @@ void test_offloader_phase3_suite(void)
 
     test_policy_selection_defaults();
     test_policy_route_split_by_scheduler();
+    test_policy_rejects_invalid_snapshot();
     test_controller_rejects_policy_failure_without_mutation();
 
     printf("=== Offloader phase 3 tests done: passes=%" PRIu32 " fails=%" PRIu32 " ===\n",
