@@ -33,6 +33,7 @@ void test_offloader_phase3_suite(void);
 void test_offloader_controller_suite(void);
 void test_task_public_model_run(void);
 void test_task_happy_path_run(void);
+void test_hello_world_onboarding_run(void);
 void test_runtime_api_run(void);
 void test_runtime_observability_run(void);
 
@@ -975,6 +976,12 @@ void app_main(void)
     fflush(stdout);
     test_task_public_model_run();
     test_task_happy_path_run();
+    task_manager_init();
+    test_helpers_reset_counts();
+    reset_runtime_indices();
+    set_creation_failure_reason(EDGE_TASK_CREATION_FAILURE_NONE);
+
+    test_hello_world_onboarding_run();
     task_manager_init();
     test_helpers_reset_counts();
     reset_runtime_indices();

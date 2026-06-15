@@ -15,6 +15,7 @@ extern "C" {
 
 void run_happy_path_example(void);
 void run_advanced_api_example(void);
+void run_hello_world_example(void);
 
 #ifdef __cplusplus
 }

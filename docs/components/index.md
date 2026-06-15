@@ -1,5 +1,6 @@
 # Component Docs
 
+- [Getting Started](../getting-started/index.md)
 - [Test Docs](tests/index.md)
 - [Task Management](tasks/Task_Management.md)
 - [Runtime Facade](api/Runtime.md)
