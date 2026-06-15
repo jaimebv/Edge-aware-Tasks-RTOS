@@ -98,7 +98,7 @@ static void offloader_observability_record(
 
 static void offloader_record_route_event(int task_index, edge_offloader_route_t route)
 {
-    edge_offloader_observability_record(
+    offloader_observability_record(
         route == EDGE_OFFLOADER_ROUTE_REMOTE ? EDGE_OFFLOADER_EVENT_ROUTE_REMOTE : EDGE_OFFLOADER_EVENT_ROUTE_LOCAL,
         task_index,
         route,
@@ -111,7 +111,7 @@ static void offloader_record_failure_event(
     edge_offloader_route_t route,
     edge_offloader_policy_status_t policy_status)
 {
-    edge_offloader_observability_record(type, task_index, route, policy_status);
+    offloader_observability_record(type, task_index, route, policy_status);
 }
 
 static bool offloader_collect_candidate_at_index(

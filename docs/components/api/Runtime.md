@@ -68,6 +68,16 @@ The runtime status snapshot also exposes the selected scheduler policy so
 tests and applications can confirm whether the default fixed-priority path or
 the RM policy path is active.
 
+The runtime diagnostics snapshot returned by `edge_runtime_diagnostics()`
+extends that view with observability data from the offloader:
+
+- route-change counters
+- failure counters
+- the latest route or failure event
+
+That makes it possible to inspect what the controller did without reaching
+into private controller state.
+
 If no explicit policy override is supplied, the runtime falls back to the
 scheduler-selected built-in policy. In v1, EDF and custom scheduler markers
 still resolve to the fixed-priority default unless a custom policy descriptor
