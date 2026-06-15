@@ -221,3 +221,29 @@ bool edge_runtime_status(edge_runtime_status_t *status)
     status->remote_host_label = active_config.offloader.remote_host_label;
     return true;
 }
+
+bool edge_runtime_diagnostics(edge_runtime_diagnostics_t *diagnostics)
+{
+    edge_offloader_observability_t observability = {0};
+
+    if (diagnostics == NULL) {
+        return false;
+    }
+
+    memset(diagnostics, 0, sizeof(*diagnostics));
+    edge_runtime_status(&diagnostics->status);
+
+    if (edge_offloader_observability(&observability)) {
+        diagnostics->total_events = observability.total_events;
+        diagnostics->route_change_events = observability.route_change_events;
+        diagnostics->failure_events = observability.failure_events;
+        diagnostics->local_route_events = observability.local_route_events;
+        diagnostics->remote_route_events = observability.remote_route_events;
+        diagnostics->has_last_event = observability.has_last_event;
+        if (observability.has_last_event) {
+            diagnostics->last_event = observability.last_event;
+        }
+    }
+
+    return true;
+}

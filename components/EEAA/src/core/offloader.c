@@ -11,6 +11,13 @@ typedef struct {
     bool initialized;
     edge_offloader_config_t config;
     edge_offloader_policy_t policy;
+    size_t total_events;
+    size_t route_change_events;
+    size_t failure_events;
+    size_t local_route_events;
+    size_t remote_route_events;
+    bool has_last_event;
+    edge_offloader_event_t last_event;
 } edge_offloader_state_t;
 
 static edge_offloader_state_t g_offloader_state = {0};
@@ -57,6 +64,36 @@ static const char *offloader_resolve_host(edge_offloader_route_t route)
     }
 
     return g_offloader_state.config.local_host_label;
+}
+
+static void offloader_observability_record(
+    edge_offloader_event_type_t type,
+    int task_index,
+    edge_offloader_route_t route,
+    edge_offloader_policy_status_t policy_status)
+{
+    edge_offloader_event_t event = {0};
+
+    event.sequence = (uint32_t)(g_offloader_state.total_events + 1U);
+    event.task_index = task_index;
+    event.route = route;
+    event.type = type;
+    event.policy_status = policy_status;
+
+    g_offloader_state.total_events++;
+    if (type == EDGE_OFFLOADER_EVENT_ROUTE_LOCAL || type == EDGE_OFFLOADER_EVENT_ROUTE_REMOTE) {
+        g_offloader_state.route_change_events++;
+        if (type == EDGE_OFFLOADER_EVENT_ROUTE_LOCAL) {
+            g_offloader_state.local_route_events++;
+        } else {
+            g_offloader_state.remote_route_events++;
+        }
+    } else {
+        g_offloader_state.failure_events++;
+    }
+
+    g_offloader_state.last_event = event;
+    g_offloader_state.has_last_event = true;
 }
 
 static bool offloader_collect_candidate_at_index(
@@ -297,6 +334,44 @@ const edge_offloader_config_t *edge_offloader_current_config(void)
 const edge_offloader_policy_t *edge_offloader_current_policy(void)
 {
     return g_offloader_state.initialized ? &g_offloader_state.policy : NULL;
+}
+
+bool edge_offloader_observability(edge_offloader_observability_t *snapshot)
+{
+    if (snapshot == NULL || !g_offloader_state.initialized) {
+        return false;
+    }
+
+    memset(snapshot, 0, sizeof(*snapshot));
+    snapshot->total_events = g_offloader_state.total_events;
+    snapshot->route_change_events = g_offloader_state.route_change_events;
+    snapshot->failure_events = g_offloader_state.failure_events;
+    snapshot->local_route_events = g_offloader_state.local_route_events;
+    snapshot->remote_route_events = g_offloader_state.remote_route_events;
+    snapshot->has_last_event = g_offloader_state.has_last_event;
+    if (snapshot->has_last_event) {
+        snapshot->last_event = g_offloader_state.last_event;
+    }
+
+    return true;
+}
+
+const char *edge_offloader_event_type_to_string(edge_offloader_event_type_t event_type)
+{
+    switch (event_type) {
+        case EDGE_OFFLOADER_EVENT_ROUTE_LOCAL:
+            return "route-local";
+        case EDGE_OFFLOADER_EVENT_ROUTE_REMOTE:
+            return "route-remote";
+        case EDGE_OFFLOADER_EVENT_POLICY_REJECTED:
+            return "policy-rejected";
+        case EDGE_OFFLOADER_EVENT_INVALID_VECTOR:
+            return "invalid-vector";
+        case EDGE_OFFLOADER_EVENT_MUTATION_FAILED:
+            return "mutation-failed";
+        default:
+            return "unknown";
+    }
 }
 
 size_t edge_offloader_collect_candidates(

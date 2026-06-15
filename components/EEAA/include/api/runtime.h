@@ -70,6 +70,23 @@ typedef struct {
 } edge_runtime_status_t;
 
 /**
+ * @brief Product-facing runtime diagnostics snapshot.
+ *
+ * The diagnostics view extends the basic status snapshot with route-change
+ * and failure telemetry emitted by the offloader layer.
+ */
+typedef struct {
+    edge_runtime_status_t status;
+    size_t total_events;
+    size_t route_change_events;
+    size_t failure_events;
+    size_t local_route_events;
+    size_t remote_route_events;
+    bool has_last_event;
+    edge_offloader_event_t last_event;
+} edge_runtime_diagnostics_t;
+
+/**
  * @brief Initialize a runtime configuration with safe defaults.
  *
  * @param[out] config Runtime configuration to initialize.
@@ -164,6 +181,14 @@ edge_runtime_state_t edge_runtime_state(void);
  * @return true when @p status was populated.
  */
 bool edge_runtime_status(edge_runtime_status_t *status);
+
+/**
+ * @brief Fill a diagnostics snapshot with runtime and offloader telemetry.
+ *
+ * @param[out] diagnostics Runtime diagnostics snapshot to populate.
+ * @return true when @p diagnostics was populated.
+ */
+bool edge_runtime_diagnostics(edge_runtime_diagnostics_t *diagnostics);
 
 #ifdef __cplusplus
 }
