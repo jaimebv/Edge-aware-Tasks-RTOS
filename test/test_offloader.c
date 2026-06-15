@@ -34,26 +34,26 @@ static const edge_task_pair_spec_t kOffloaderPairSpec = {
     .message_size = sizeof(int),
 };
 
-static volatile bool g_offloader_client_ready;
-static volatile bool g_offloader_server_ready;
+static volatile uint32_t g_offloader_client_ready_count;
+static volatile uint32_t g_offloader_server_ready_count;
 
-static bool wait_until(volatile bool *flag, uint32_t timeout_ms)
+static bool wait_until_count(volatile uint32_t *counter, uint32_t min_count, uint32_t timeout_ms)
 {
     const uint32_t step_ms = 10U;
     uint32_t waited = 0U;
 
-    while (!*flag && waited < timeout_ms) {
+    while (*counter < min_count && waited < timeout_ms) {
         eaPort_Delay_Milliseconds(step_ms);
         waited += step_ms;
     }
 
-    return *flag;
+    return *counter >= min_count;
 }
 
 static void reset_ready_flags(void)
 {
-    g_offloader_client_ready = false;
-    g_offloader_server_ready = false;
+    g_offloader_client_ready_count = 0U;
+    g_offloader_server_ready_count = 0U;
 }
 
 static void offloader_client_task(void *pvParameters)
@@ -65,7 +65,7 @@ static void offloader_client_task(void *pvParameters)
         return;
     }
 
-    g_offloader_client_ready = true;
+    ++g_offloader_client_ready_count;
 
     while (1) {
         eaPort_Delay_Milliseconds(1000U);
@@ -81,7 +81,7 @@ static void offloader_server_task(void *pvParameters)
         return;
     }
 
-    g_offloader_server_ready = true;
+    ++g_offloader_server_ready_count;
 
     while (1) {
         eaPort_Delay_Milliseconds(1000U);
@@ -111,10 +111,21 @@ static edge_task_creation_result_t create_offloader_pair(const char *base_name)
 }
 
 static bool test_batch_policy_eval_local(
+    const edge_offloader_policy_context_t *context,
     const edge_offloader_candidate_t *candidate,
-    edge_offloader_result_t *result)
+    edge_offloader_result_t *result,
+    edge_offloader_policy_status_t *status)
 {
+    (void)context;
+
+    if (status != NULL) {
+        *status = EDGE_OFFLOADER_POLICY_STATUS_OK;
+    }
+
     if (candidate == NULL || result == NULL) {
+        if (status != NULL) {
+            *status = EDGE_OFFLOADER_POLICY_STATUS_INVALID_INPUT;
+        }
         return false;
     }
 
@@ -124,12 +135,20 @@ static bool test_batch_policy_eval_local(
 }
 
 static bool test_batch_policy_plan_incomplete(
+    const edge_offloader_policy_context_t *context,
     const edge_offloader_candidate_t *candidates,
     size_t candidate_count,
     edge_offloader_result_t *results,
     size_t results_capacity,
-    size_t *results_written)
+    size_t *results_written,
+    edge_offloader_policy_status_t *status)
 {
+    (void)context;
+
+    if (status != NULL) {
+        *status = EDGE_OFFLOADER_POLICY_STATUS_INVALID_INPUT;
+    }
+
     if (candidates == NULL || results == NULL || results_written == NULL) {
         return false;
     }
@@ -141,11 +160,15 @@ static bool test_batch_policy_plan_incomplete(
     results[0].task_index = candidates[0].task_index;
     results[0].route = EDGE_OFFLOADER_ROUTE_LOCAL;
     *results_written = 1U;
+    if (status != NULL) {
+        *status = EDGE_OFFLOADER_POLICY_STATUS_UNSAFE_PLAN;
+    }
     return true;
 }
 
 static const edge_offloader_policy_t kBatchRejectPolicy = {
     .name = "batch-reject-incomplete",
+    .scheduler_policy = EDGE_OFFLOADER_SCHEDULER_CUSTOM,
     .evaluate = test_batch_policy_eval_local,
     .plan = test_batch_policy_plan_incomplete,
 };
@@ -154,11 +177,12 @@ static void test_policy_null_inputs(void)
 {
     edge_offloader_candidate_t candidate = {0};
     edge_offloader_result_t result = {0};
+    edge_offloader_policy_status_t status = EDGE_OFFLOADER_POLICY_STATUS_OK;
     const edge_offloader_policy_t *policy = edge_offloader_policy_simple();
 
     expect_true("policy descriptor present", policy != NULL, "policy descriptor missing");
-    expect_true("policy evaluate null candidate", policy->evaluate(NULL, &result) == false, "null candidate should fail");
-    expect_true("policy evaluate null result", policy->evaluate(&candidate, NULL) == false, "null result should fail");
+    expect_true("policy evaluate null candidate", policy->evaluate(NULL, NULL, &result, &status) == false, "null candidate should fail");
+    expect_true("policy evaluate null result", policy->evaluate(NULL, &candidate, NULL, &status) == false, "null result should fail");
 
     pass("policy null input guards");
 }
@@ -167,6 +191,7 @@ static void test_policy_local_default(void)
 {
     edge_offloader_candidate_t candidate = {0};
     edge_offloader_result_t result = {0};
+    edge_offloader_policy_status_t status = EDGE_OFFLOADER_POLICY_STATUS_OK;
     const edge_offloader_policy_t *policy = edge_offloader_policy_simple();
 
     candidate.task_index = 7;
@@ -177,7 +202,7 @@ static void test_policy_local_default(void)
     candidate.snapshot.cpu_cycles = 900U;
     candidate.runtime = NULL;
 
-    expect_true("policy evaluate local", policy->evaluate(&candidate, &result), "local decision should succeed");
+    expect_true("policy evaluate local", policy->evaluate(NULL, &candidate, &result, &status), "local decision should succeed");
     expect_true("policy local task index", result.task_index == 7, "task index mismatch");
     expect_true("policy local route", result.route == EDGE_OFFLOADER_ROUTE_LOCAL, "candidate should stay local");
 
@@ -188,6 +213,7 @@ static void test_policy_remote_threshold(void)
 {
     edge_offloader_candidate_t candidate = {0};
     edge_offloader_result_t result = {0};
+    edge_offloader_policy_status_t status = EDGE_OFFLOADER_POLICY_STATUS_OK;
     const edge_offloader_policy_t *policy = edge_offloader_policy_simple();
 
     candidate.task_index = 12;
@@ -198,7 +224,7 @@ static void test_policy_remote_threshold(void)
     candidate.snapshot.cpu_cycles = 1200U;
     candidate.runtime = NULL;
 
-    expect_true("policy evaluate remote", policy->evaluate(&candidate, &result), "remote decision should succeed");
+    expect_true("policy evaluate remote", policy->evaluate(NULL, &candidate, &result, &status), "remote decision should succeed");
     expect_true("policy remote task index", result.task_index == 12, "task index mismatch");
     expect_true("policy remote route", result.route == EDGE_OFFLOADER_ROUTE_REMOTE, "candidate should route remote");
 
@@ -210,6 +236,7 @@ static void test_controller_candidate_collection_and_routing(void)
     const edge_offloader_config_t config = {
         .enabled = true,
         .mode = EDGE_OFFLOADER_MODE_PER_TASK,
+        .scheduler_policy = EDGE_OFFLOADER_SCHEDULER_FP,
         .control_period_ms = 100U,
         .local_host_label = "LOCAL_ROUTE",
         .remote_host_label = "REMOTE_ROUTE",
@@ -233,7 +260,7 @@ static void test_controller_candidate_collection_and_routing(void)
     current_policy = edge_offloader_current_policy();
     expect_true("controller config active", current_config != NULL && current_config->enabled, "controller config missing");
     expect_true("controller policy active", current_policy != NULL && current_policy->evaluate != NULL, "controller policy missing");
-    expect_true("controller policy name", current_policy->name != NULL && strcmp(current_policy->name, "simple-local-first") == 0, "policy name mismatch");
+    expect_true("controller policy name", current_policy->name != NULL && strcmp(current_policy->name, "fixed-priority") == 0, "policy name mismatch");
     expect_true("controller invalid run", edge_offloader_run_for_task_index(-1) == false, "invalid index should fail");
 
     creation = create_offloader_pair("OFLOW");
@@ -243,8 +270,8 @@ static void test_controller_candidate_collection_and_routing(void)
     expect_true("controller runtime present", runtime != NULL, "runtime missing");
     server_index = edge_task_pair_peer_index(runtime);
     expect_true("controller server index", server_index >= 0, "server index missing");
-    expect_true("controller client ready", wait_until(&g_offloader_client_ready, 5000U), "client task did not start");
-    expect_true("controller server ready", wait_until(&g_offloader_server_ready, 5000U), "server task did not start");
+    expect_true("controller client ready", wait_until_count(&g_offloader_client_ready_count, 1U, 5000U), "client task did not start");
+    expect_true("controller server ready", wait_until_count(&g_offloader_server_ready_count, 1U, 5000U), "server task did not start");
 
     update_task_metrics_OE2EL_by_index(client_index, 100U);
     expect_true("controller candidate count", edge_offloader_collect_candidates(NULL, 0U) == 1U, "candidate count mismatch");
@@ -279,6 +306,7 @@ static void test_controller_batch_vector_routing(void)
     const edge_offloader_config_t config = {
         .enabled = true,
         .mode = EDGE_OFFLOADER_MODE_BATCH,
+        .scheduler_policy = EDGE_OFFLOADER_SCHEDULER_FP,
         .control_period_ms = 100U,
         .local_host_label = "LOCAL_ROUTE",
         .remote_host_label = "REMOTE_ROUTE",
@@ -303,10 +331,10 @@ static void test_controller_batch_vector_routing(void)
 
     client_a = creation_a.task_index;
     client_b = creation_b.task_index;
-    expect_true("batch client a ready", wait_until(&g_offloader_client_ready, 5000U), "client A task did not start");
-    expect_true("batch client b ready", wait_until(&g_offloader_client_ready, 5000U), "client B task did not start");
-    expect_true("batch server a ready", wait_until(&g_offloader_server_ready, 5000U), "server A task did not start");
-    expect_true("batch server b ready", wait_until(&g_offloader_server_ready, 5000U), "server B task did not start");
+    expect_true("batch client a ready", wait_until_count(&g_offloader_client_ready_count, 1U, 5000U), "client A task did not start");
+    expect_true("batch client b ready", wait_until_count(&g_offloader_client_ready_count, 2U, 5000U), "client B task did not start");
+    expect_true("batch server a ready", wait_until_count(&g_offloader_server_ready_count, 1U, 5000U), "server A task did not start");
+    expect_true("batch server b ready", wait_until_count(&g_offloader_server_ready_count, 2U, 5000U), "server B task did not start");
 
     update_task_metrics_OE2EL_by_index(client_a, 100U);
     update_task_metrics_OE2EL_by_index(client_b, 600U);
@@ -332,6 +360,7 @@ static void test_controller_batch_rejects_incomplete_vector(void)
     const edge_offloader_config_t config = {
         .enabled = true,
         .mode = EDGE_OFFLOADER_MODE_BATCH,
+        .scheduler_policy = EDGE_OFFLOADER_SCHEDULER_FP,
         .control_period_ms = 100U,
         .local_host_label = "LOCAL_ROUTE",
         .remote_host_label = "REMOTE_ROUTE",
@@ -354,10 +383,10 @@ static void test_controller_batch_rejects_incomplete_vector(void)
 
     client_a = creation_a.task_index;
     client_b = creation_b.task_index;
-    expect_true("reject batch client a ready", wait_until(&g_offloader_client_ready, 5000U), "reject batch client A did not start");
-    expect_true("reject batch client b ready", wait_until(&g_offloader_client_ready, 5000U), "reject batch client B did not start");
-    expect_true("reject batch server a ready", wait_until(&g_offloader_server_ready, 5000U), "reject batch server A did not start");
-    expect_true("reject batch server b ready", wait_until(&g_offloader_server_ready, 5000U), "reject batch server B did not start");
+    expect_true("reject batch client a ready", wait_until_count(&g_offloader_client_ready_count, 1U, 5000U), "reject batch client A did not start");
+    expect_true("reject batch client b ready", wait_until_count(&g_offloader_client_ready_count, 2U, 5000U), "reject batch client B did not start");
+    expect_true("reject batch server a ready", wait_until_count(&g_offloader_server_ready_count, 1U, 5000U), "reject batch server A did not start");
+    expect_true("reject batch server b ready", wait_until_count(&g_offloader_server_ready_count, 2U, 5000U), "reject batch server B did not start");
 
     update_task_metrics_OE2EL_by_index(client_a, 100U);
     update_task_metrics_OE2EL_by_index(client_b, 600U);
@@ -382,6 +411,7 @@ static void test_controller_rejects_missing_route_labels(void)
     const edge_offloader_config_t invalid_config = {
         .enabled = true,
         .mode = EDGE_OFFLOADER_MODE_PER_TASK,
+        .scheduler_policy = EDGE_OFFLOADER_SCHEDULER_FP,
         .control_period_ms = 100U,
         .local_host_label = "LOCAL_ROUTE",
         .remote_host_label = NULL,
@@ -398,8 +428,8 @@ static void test_controller_rejects_missing_route_labels(void)
     creation = create_offloader_pair("OFLOW2");
     expect_true("reject labels pair create", creation.failure_reason == EDGE_TASK_CREATION_FAILURE_NONE && creation.task_index >= 0, "offloader pair creation failed");
     client_index = creation.task_index;
-    expect_true("reject labels client ready", wait_until(&g_offloader_client_ready, 5000U), "client task did not start");
-    expect_true("reject labels server ready", wait_until(&g_offloader_server_ready, 5000U), "server task did not start");
+    expect_true("reject labels client ready", wait_until_count(&g_offloader_client_ready_count, 1U, 5000U), "client task did not start");
+    expect_true("reject labels server ready", wait_until_count(&g_offloader_server_ready_count, 1U, 5000U), "server task did not start");
     expect_true("reject labels run blocked", edge_offloader_run_for_task_index(client_index) == false, "offloader should reject missing route labels");
 
     expect_true("reject labels destroy pair", edge_task_pair_destroy_by_task_index(client_index, EDGE_TASK_CLEANUP_PAIR) == 1, "reject labels cleanup failed");

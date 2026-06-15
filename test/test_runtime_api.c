@@ -105,8 +105,10 @@ static void test_runtime_default_start_and_stop(void)
     expect_true("runtime status available", edge_runtime_status(&status), "runtime status missing");
     expect_true("runtime status configured", status.configured, "runtime should report configured");
     expect_true("runtime status running", status.running, "runtime should report running");
-    expect_true("runtime status policy name", status.policy_name != NULL && strcmp(status.policy_name, "simple-local-first") == 0,
+    expect_true("runtime status policy name", status.policy_name != NULL && strcmp(status.policy_name, "fixed-priority") == 0,
                 "runtime should expose the default policy name");
+    expect_true("runtime status scheduler policy", status.scheduler_policy == EDGE_OFFLOADER_SCHEDULER_FP,
+                "runtime should report the default scheduler policy");
     expect_true("runtime default stop", edge_runtime_stop(), "runtime stop failed");
     expect_true("runtime state ready", edge_runtime_state() == EDGE_RUNTIME_STATE_READY, "runtime should remain ready after stop");
 
@@ -145,6 +147,7 @@ static void test_runtime_controller_forwarding(void)
     config.offloader.remote_host_label = "RUNTIME_REMOTE";
     config.offloader.mode = EDGE_OFFLOADER_MODE_PER_TASK;
     config.offloader.control_period_ms = 100U;
+    edge_runtime_config_set_scheduler_policy(&config, EDGE_OFFLOADER_SCHEDULER_RM);
 
     reset_ready_flags();
     expect_true("runtime configured start", edge_runtime_start(&config), "runtime configured start failed");
@@ -152,6 +155,10 @@ static void test_runtime_controller_forwarding(void)
     expect_true("runtime pair create", result.failure_reason == EDGE_TASK_CREATION_FAILURE_NONE && result.task_index >= 0,
                 edge_task_creation_failure_reason_to_string(result.failure_reason));
     expect_true("runtime status after create", edge_runtime_status(&status), "runtime status unavailable after create");
+    expect_true("runtime status scheduler policy", status.scheduler_policy == EDGE_OFFLOADER_SCHEDULER_RM,
+                "runtime should report the RM scheduler policy");
+    expect_true("runtime status policy name rm", status.policy_name != NULL && strcmp(status.policy_name, "rate-monotonic") == 0,
+                "runtime should expose the RM policy name");
     expect_true("runtime status monitored count", status.monitored_tasks == baseline + 2U, "monitored count mismatch");
     expect_true("runtime client ready", wait_until(&g_runtime_client_ready, 5000U), "client task did not start");
     expect_true("runtime server ready", wait_until(&g_runtime_server_ready, 5000U), "server task did not start");

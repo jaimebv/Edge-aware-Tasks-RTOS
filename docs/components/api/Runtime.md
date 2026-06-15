@@ -56,11 +56,22 @@ code does not have to assemble a full runtime config by hand:
 
 - `edge_runtime_start_default()`
 - `edge_runtime_start_local_first()`
+- `edge_runtime_config_set_scheduler_policy()`
+- `edge_runtime_config_set_policy()`
 - `edge_task_spec_init_enriched()`
 - `edge_task_spec_init_local()`
 - `edge_task_spec_set_local_host_label()`
 - `edge_task_spec_set_deadline_ms()`
 - `edge_task_spec_set_wcet()`
+
+The runtime status snapshot also exposes the selected scheduler policy so
+tests and applications can confirm whether the default fixed-priority path or
+the RM policy path is active.
+
+If no explicit policy override is supplied, the runtime falls back to the
+scheduler-selected built-in policy. In v1, EDF and custom scheduler markers
+still resolve to the fixed-priority default unless a custom policy descriptor
+is provided.
 
 These helpers are intentionally thin. They fill the standard defaults while
 still forwarding to the same underlying runtime and task-manager code.

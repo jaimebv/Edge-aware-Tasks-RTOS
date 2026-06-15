@@ -35,6 +35,16 @@ static bool offloader_state_ready(void)
            g_offloader_state.policy.evaluate != NULL;
 }
 
+static edge_offloader_policy_context_t offloader_policy_context(void)
+{
+    edge_offloader_policy_context_t context = {0};
+
+    context.config = &g_offloader_state.config;
+    context.scheduler_policy = g_offloader_state.config.scheduler_policy;
+    context.mode = g_offloader_state.config.mode;
+    return context;
+}
+
 static bool offloader_batch_mode_enabled(void)
 {
     return g_offloader_state.config.mode == EDGE_OFFLOADER_MODE_BATCH;
@@ -149,6 +159,36 @@ static bool offloader_apply_batch_results(
     return true;
 }
 
+static bool offloader_result_is_valid(
+    const edge_offloader_candidate_t *candidate,
+    const edge_offloader_result_t *result)
+{
+    const edge_task_pair_runtime_t *runtime = NULL;
+
+    if (candidate == NULL || result == NULL) {
+        return false;
+    }
+
+    if (result->task_index < 0 || result->task_index != candidate->task_index) {
+        return false;
+    }
+
+    switch (result->route) {
+        case EDGE_OFFLOADER_ROUTE_LOCAL:
+        case EDGE_OFFLOADER_ROUTE_REMOTE:
+            break;
+        default:
+            return false;
+    }
+
+    runtime = edge_task_pair_runtime_by_task_index(candidate->task_index);
+    if (runtime == NULL || edge_task_pair_id(runtime) != candidate->pair_id) {
+        return false;
+    }
+
+    return true;
+}
+
 static bool offloader_run_per_task_cycle(void)
 {
     edge_offloader_candidate_t candidates[CONFIG_EA_MAX_TASKS];
@@ -163,13 +203,19 @@ static bool offloader_run_per_task_cycle(void)
 
     for (i = 0U; i < candidate_count && i < CONFIG_EA_MAX_TASKS; ++i) {
         edge_offloader_result_t result = {0};
+        edge_offloader_policy_status_t policy_status = EDGE_OFFLOADER_POLICY_STATUS_OK;
+        edge_offloader_policy_context_t context = offloader_policy_context();
 
-        if (!g_offloader_state.policy.evaluate(&candidates[i], &result)) {
+        if (!g_offloader_state.policy.evaluate(
+                &context,
+                &candidates[i],
+                &result,
+                &policy_status)) {
             return false;
         }
 
-        if (result.task_index < 0) {
-            result.task_index = candidates[i].task_index;
+        if (!offloader_result_is_valid(&candidates[i], &result)) {
+            return false;
         }
 
         if (!edge_offloader_apply_result(&result)) {
@@ -186,8 +232,10 @@ static bool offloader_run_batch_cycle(void)
 {
     edge_offloader_candidate_t candidates[CONFIG_EA_MAX_TASKS];
     edge_offloader_result_t planned_results[CONFIG_EA_MAX_TASKS];
+    edge_offloader_policy_context_t context = offloader_policy_context();
     size_t candidate_count = 0U;
     size_t planned_count = 0U;
+    edge_offloader_policy_status_t policy_status = EDGE_OFFLOADER_POLICY_STATUS_OK;
 
     if (g_offloader_state.policy.plan == NULL) {
         return false;
@@ -199,11 +247,13 @@ static bool offloader_run_batch_cycle(void)
     }
 
     if (!g_offloader_state.policy.plan(
+            &context,
             candidates,
             candidate_count,
             planned_results,
             candidate_count,
-            &planned_count)) {
+            &planned_count,
+            &policy_status)) {
         return false;
     }
 
@@ -218,12 +268,18 @@ void edge_offloader_init(
     const edge_offloader_config_t *config,
     const edge_offloader_policy_t *policy)
 {
+    const edge_offloader_policy_t *resolved_policy = NULL;
+
     memset(&g_offloader_state, 0, sizeof(g_offloader_state));
     if (config != NULL) {
         g_offloader_state.config = *config;
     }
-    if (policy != NULL) {
-        g_offloader_state.policy = *policy;
+
+    resolved_policy = policy != NULL
+        ? policy
+        : edge_offloader_policy_default_for_scheduler(g_offloader_state.config.scheduler_policy);
+    if (resolved_policy != NULL) {
+        g_offloader_state.policy = *resolved_policy;
     }
     g_offloader_state.initialized = true;
 }
@@ -308,6 +364,8 @@ bool edge_offloader_run_for_task_index(int task_index)
 {
     edge_offloader_candidate_t candidate = {0};
     edge_offloader_result_t result = {0};
+    edge_offloader_policy_status_t policy_status = EDGE_OFFLOADER_POLICY_STATUS_OK;
+    edge_offloader_policy_context_t context = offloader_policy_context();
 
     if (!offloader_state_ready()) {
         return false;
@@ -317,12 +375,12 @@ bool edge_offloader_run_for_task_index(int task_index)
         return false;
     }
 
-    if (!g_offloader_state.policy.evaluate(&candidate, &result)) {
+    if (!g_offloader_state.policy.evaluate(&context, &candidate, &result, &policy_status)) {
         return false;
     }
 
-    if (result.task_index < 0) {
-        result.task_index = task_index;
+    if (!offloader_result_is_valid(&candidate, &result)) {
+        return false;
     }
 
     return edge_offloader_apply_result(&result);
