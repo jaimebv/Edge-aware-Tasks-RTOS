@@ -151,7 +151,29 @@ The policy layer supports both:
 - per-candidate evaluation for compatibility and direct routing helpers
 - batch planning for scheduler-aware vector decisions
 
-## 7. Regression coverage
+## 8. Observability
+
+The offloader records a compact telemetry snapshot for product users and
+board-backed tests. The public snapshot reports:
+
+- total observed events
+- route-change events split by local and remote outcomes
+- failure events
+- the latest event type and policy status
+
+The event types are intentionally small and stable:
+
+- route local
+- route remote
+- policy rejected
+- invalid vector
+- mutation failed
+
+The controller still owns routing decisions and mutation sequencing. The
+observability layer only records the result so the runtime facade can expose it
+without duplicating controller logic.
+
+## 9. Regression coverage
 
 The offloader is covered by two test harness entry points:
 

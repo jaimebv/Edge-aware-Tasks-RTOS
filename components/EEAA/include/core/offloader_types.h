@@ -32,6 +32,20 @@ typedef enum {
 } edge_offloader_route_t;
 
 /**
+ * @brief Event type emitted by the offloader observability layer.
+ *
+ * Route events describe successful controller mutations. Failure events
+ * describe controller or policy rejections before state changes are applied.
+ */
+typedef enum {
+    EDGE_OFFLOADER_EVENT_ROUTE_LOCAL = 0,
+    EDGE_OFFLOADER_EVENT_ROUTE_REMOTE = 1,
+    EDGE_OFFLOADER_EVENT_POLICY_REJECTED = 2,
+    EDGE_OFFLOADER_EVENT_INVALID_VECTOR = 3,
+    EDGE_OFFLOADER_EVENT_MUTATION_FAILED = 4,
+} edge_offloader_event_type_t;
+
+/**
  * @brief Controller execution mode.
  */
 typedef enum {

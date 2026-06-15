@@ -34,6 +34,7 @@ void test_offloader_controller_suite(void);
 void test_task_public_model_run(void);
 void test_task_happy_path_run(void);
 void test_runtime_api_run(void);
+void test_runtime_observability_run(void);
 
 
 #define TEST_PAIR_COUNT          6U
@@ -980,6 +981,12 @@ void app_main(void)
     set_creation_failure_reason(EDGE_TASK_CREATION_FAILURE_NONE);
 
     test_runtime_api_run();
+    task_manager_init();
+    test_helpers_reset_counts();
+    reset_runtime_indices();
+    set_creation_failure_reason(EDGE_TASK_CREATION_FAILURE_NONE);
+
+    test_runtime_observability_run();
     task_manager_init();
     test_helpers_reset_counts();
     reset_runtime_indices();

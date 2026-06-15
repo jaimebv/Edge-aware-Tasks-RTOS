@@ -36,6 +36,8 @@ The architecture is built around these goals:
      metadata
    - runtime accessors should make it possible to inspect a task pair from inside
      the task context
+   - runtime diagnostics should expose controller route/failure events to
+     product users and board tests
 
 3. **Cleanup correctness**
    - creation must roll back cleanly when a queue or task step fails
@@ -219,6 +221,7 @@ It owns:
 - runtime start/stop control
 - a thin controller tick wrapper
 - runtime status snapshots for application code and tests
+- runtime diagnostics snapshots for route/failure observability
 
 It does not own task creation or routing logic itself.
 Instead, it coordinates the task manager and offloader so application code can

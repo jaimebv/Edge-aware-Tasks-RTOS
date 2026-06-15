@@ -26,6 +26,33 @@ extern "C" {
 #endif
 
 /**
+ * @brief Event record emitted by the offloader observability layer.
+ */
+typedef struct {
+    uint32_t sequence;
+    int task_index;
+    edge_offloader_route_t route;
+    edge_offloader_event_type_t type;
+    edge_offloader_policy_status_t policy_status;
+} edge_offloader_event_t;
+
+/**
+ * @brief Aggregated offloader observability snapshot.
+ *
+ * The snapshot is compact enough to expose to the runtime facade and board
+ * tests without leaking controller internals.
+ */
+typedef struct {
+    size_t total_events;
+    size_t route_change_events;
+    size_t failure_events;
+    size_t local_route_events;
+    size_t remote_route_events;
+    bool has_last_event;
+    edge_offloader_event_t last_event;
+} edge_offloader_observability_t;
+
+/**
  * @brief Initialize the offloader controller.
  *
  * @param[in] config Static controller configuration.
@@ -90,6 +117,22 @@ const edge_offloader_config_t *edge_offloader_current_config(void);
  * @return Pointer to the active policy, or NULL if uninitialized.
  */
 const edge_offloader_policy_t *edge_offloader_current_policy(void);
+
+/**
+ * @brief Fill a snapshot with the current offloader observability summary.
+ *
+ * @param[out] snapshot Observability snapshot to populate.
+ * @return true when @p snapshot was populated.
+ */
+bool edge_offloader_observability(edge_offloader_observability_t *snapshot);
+
+/**
+ * @brief Convert an offloader event type to a static string.
+ *
+ * @param[in] event_type Offloader event type value.
+ * @return Static string describing the event type.
+ */
+const char *edge_offloader_event_type_to_string(edge_offloader_event_type_t event_type);
 
 #ifdef __cplusplus
 }
