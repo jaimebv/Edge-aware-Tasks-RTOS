@@ -5,6 +5,7 @@
 - [Offloader Test Harness](Offloader_Test.md)
 - [Task Lifecycle Test Harness](Task_Lifecycle_Test.md)
 - [Runtime API Test Harness](Runtime_API_Test.md)
+- [Hello-World Onboarding Test Harness](Hello_World_Onboarding_Test.md)
 - [Port-board Test Harness](Port_Board_Test.md)
 
 These pages explain the test style used in `test/` and how the harnesses are

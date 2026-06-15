@@ -6,6 +6,7 @@ configuration, module responsibilities, test strategy, and the way the pieces fi
 
 ## Start here
 
+- [Getting Started](getting-started/index.md)
 - [System docs](system/index.md)
 - [Component docs](components/index.md)
 - [System Architecture](system/System_Architecture.md)
@@ -36,13 +37,14 @@ configuration, module responsibilities, test strategy, and the way the pieces fi
 
 1. [System Architecture](system/System_Architecture.md)
 2. [System Configuration](system/SystemConfig.md)
-3. [Port Layer](components/port/Port.md)
-4. [Port-RTOS Test Harness](components/tests/Port_Rtos_Test.md)
-5. [Offloader Controller](components/offloader/Offloader.md)
-6. [Task Management](components/tasks/Task_Management.md)
-7. [Offloader Test Harness](components/tests/Offloader_Test.md)
-8. [Task Manager Tests](components/tests/task_manager.md)
-9. Doxygen API reference generated from the public headers
+3. [Getting Started](getting-started/index.md)
+4. [Port Layer](components/port/Port.md)
+5. [Port-RTOS Test Harness](components/tests/Port_Rtos_Test.md)
+6. [Offloader Controller](components/offloader/Offloader.md)
+7. [Task Management](components/tasks/Task_Management.md)
+8. [Offloader Test Harness](components/tests/Offloader_Test.md)
+9. [Task Manager Tests](components/tests/task_manager.md)
+10. Doxygen API reference generated from the public headers
 
 ## Notes for maintainers
 

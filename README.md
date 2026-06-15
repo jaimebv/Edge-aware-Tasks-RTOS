@@ -47,6 +47,12 @@ That structure makes the repo useful for studying edge-oriented workloads, deadl
 
 ## Getting started
 
+### Quickstart
+
+If you want the shortest first run, start here:
+
+- [FreeRTOS First Onboarding Quickstart](docs/getting-started/Quickstart.md)
+
 ### Build
 
 ```bash
@@ -58,6 +64,7 @@ To build the selectable demos:
 ```bash
 pio run -d . -e nodemcu-32s-happy
 pio run -d . -e nodemcu-32s-advanced
+pio run -d . -e nodemcu-32s-hello
 ```
 
 ### Flash
@@ -67,6 +74,12 @@ pio run -d . -e nodemcu-32s -t upload
 ```
 
 Use the matching environment name when flashing one of the selectable demos.
+
+### Hello-world onboarding
+
+The `nodemcu-32s-hello` environment is the shortest board-backed first run.
+It starts the runtime with the local-first helper, creates one enriched task
+pair, and prints a compact hello/heartbeat serial trace.
 
 ### Monitor
 
@@ -86,6 +99,7 @@ Read the documentation hub in /docs:
 - `components/EEAA/examples/port/port_board_example.c` — board abstraction demo
 - `src/examples/happy_path_example.c` — selectable happy-path runtime/task demo
 - `src/examples/advanced_api_example.c` — selectable advanced runtime/task demo
+- `src/examples/hello_world_example.c` — selectable FreeRTOS-first onboarding demo
 
 
 ## Contributing
