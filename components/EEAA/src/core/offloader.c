@@ -96,6 +96,24 @@ static void offloader_observability_record(
     g_offloader_state.has_last_event = true;
 }
 
+static void offloader_record_route_event(int task_index, edge_offloader_route_t route)
+{
+    edge_offloader_observability_record(
+        route == EDGE_OFFLOADER_ROUTE_REMOTE ? EDGE_OFFLOADER_EVENT_ROUTE_REMOTE : EDGE_OFFLOADER_EVENT_ROUTE_LOCAL,
+        task_index,
+        route,
+        EDGE_OFFLOADER_POLICY_STATUS_OK);
+}
+
+static void offloader_record_failure_event(
+    edge_offloader_event_type_t type,
+    int task_index,
+    edge_offloader_route_t route,
+    edge_offloader_policy_status_t policy_status)
+{
+    edge_offloader_observability_record(type, task_index, route, policy_status);
+}
+
 static bool offloader_collect_candidate_at_index(
     int task_index,
     edge_offloader_candidate_t *candidate)
@@ -184,11 +202,21 @@ static bool offloader_apply_batch_results(
     }
 
     if (!offloader_normalize_batch_results(candidates, results, result_count, normalized_results)) {
+        offloader_record_failure_event(
+            EDGE_OFFLOADER_EVENT_INVALID_VECTOR,
+            candidates != NULL ? candidates[0].task_index : -1,
+            EDGE_OFFLOADER_ROUTE_LOCAL,
+            EDGE_OFFLOADER_POLICY_STATUS_INVALID_VECTOR);
         return false;
     }
 
     for (i = 0U; i < result_count; ++i) {
         if (!edge_offloader_apply_result(&normalized_results[i])) {
+            offloader_record_failure_event(
+                EDGE_OFFLOADER_EVENT_MUTATION_FAILED,
+                normalized_results[i].task_index,
+                normalized_results[i].route,
+                EDGE_OFFLOADER_POLICY_STATUS_INVALID_VECTOR);
             return false;
         }
     }
@@ -248,10 +276,20 @@ static bool offloader_run_per_task_cycle(void)
                 &candidates[i],
                 &result,
                 &policy_status)) {
+            offloader_record_failure_event(
+                EDGE_OFFLOADER_EVENT_POLICY_REJECTED,
+                candidates[i].task_index,
+                EDGE_OFFLOADER_ROUTE_LOCAL,
+                policy_status);
             return false;
         }
 
         if (!offloader_result_is_valid(&candidates[i], &result)) {
+            offloader_record_failure_event(
+                EDGE_OFFLOADER_EVENT_INVALID_VECTOR,
+                candidates[i].task_index,
+                EDGE_OFFLOADER_ROUTE_LOCAL,
+                policy_status);
             return false;
         }
 
@@ -291,10 +329,20 @@ static bool offloader_run_batch_cycle(void)
             candidate_count,
             &planned_count,
             &policy_status)) {
+        offloader_record_failure_event(
+            EDGE_OFFLOADER_EVENT_POLICY_REJECTED,
+            -1,
+            EDGE_OFFLOADER_ROUTE_LOCAL,
+            policy_status);
         return false;
     }
 
     if (planned_count != candidate_count) {
+        offloader_record_failure_event(
+            EDGE_OFFLOADER_EVENT_INVALID_VECTOR,
+            -1,
+            EDGE_OFFLOADER_ROUTE_LOCAL,
+            EDGE_OFFLOADER_POLICY_STATUS_INVALID_VECTOR);
         return false;
     }
 
@@ -425,14 +473,34 @@ bool edge_offloader_apply_result(const edge_offloader_result_t *result)
     }
 
     if (host == NULL || host[0] == '\0') {
+        offloader_record_failure_event(
+            EDGE_OFFLOADER_EVENT_MUTATION_FAILED,
+            result->task_index,
+            result->route,
+            EDGE_OFFLOADER_POLICY_STATUS_INVALID_INPUT);
         return false;
     }
 
     if (!edge_task_pair_set_local_host_label_by_index(result->task_index, host)) {
+        offloader_record_failure_event(
+            EDGE_OFFLOADER_EVENT_MUTATION_FAILED,
+            result->task_index,
+            result->route,
+            EDGE_OFFLOADER_POLICY_STATUS_INVALID_INPUT);
         return false;
     }
 
-    return edge_task_pair_set_exec_site_by_index(result->task_index, exec_site);
+    if (!edge_task_pair_set_exec_site_by_index(result->task_index, exec_site)) {
+        offloader_record_failure_event(
+            EDGE_OFFLOADER_EVENT_MUTATION_FAILED,
+            result->task_index,
+            result->route,
+            EDGE_OFFLOADER_POLICY_STATUS_INVALID_INPUT);
+        return false;
+    }
+
+    offloader_record_route_event(result->task_index, result->route);
+    return true;
 }
 
 bool edge_offloader_run_for_task_index(int task_index)
@@ -451,10 +519,20 @@ bool edge_offloader_run_for_task_index(int task_index)
     }
 
     if (!g_offloader_state.policy.evaluate(&context, &candidate, &result, &policy_status)) {
+        offloader_record_failure_event(
+            EDGE_OFFLOADER_EVENT_POLICY_REJECTED,
+            candidate.task_index,
+            EDGE_OFFLOADER_ROUTE_LOCAL,
+            policy_status);
         return false;
     }
 
     if (!offloader_result_is_valid(&candidate, &result)) {
+        offloader_record_failure_event(
+            EDGE_OFFLOADER_EVENT_INVALID_VECTOR,
+            candidate.task_index,
+            EDGE_OFFLOADER_ROUTE_LOCAL,
+            policy_status);
         return false;
     }
 
