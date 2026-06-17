@@ -49,6 +49,7 @@ static void runtime_registry_init(void);
 static bool runtime_registry_expand(void);
 static bool runtime_registry_slot_owned(const edge_task_runtime_slot_t *slot);
 static uint32_t next_pair_id_locked(void);
+static void runtime_registry_clear_locked(void);
 static void clear_runtime_monitor_entries(int client_index, int server_index, bool include_server);
 static void cleanup_queue_handle(eaPort_queue_t *queue);
 static void cleanup_task_handle(eaPort_task_t *handle);
@@ -455,6 +456,20 @@ static bool runtime_registry_expand(void)
     return true;
 }
 
+static void runtime_registry_clear_locked(void)
+{
+    edge_task_runtime_chunk_t *chunk = runtimeChunks;
+
+    runtimeChunks = NULL;
+    runtimeFreeList = NULL;
+
+    while (chunk != NULL) {
+        edge_task_runtime_chunk_t *next = chunk->next;
+        eaPort_Free(chunk);
+        chunk = next;
+    }
+}
+
 static bool runtime_registry_slot_owned(const edge_task_runtime_slot_t *slot)
 {
     if (slot == NULL) {
@@ -608,15 +623,25 @@ void edge_task_pair_runtime_release(edge_task_pair_runtime_t *runtime)
 }
 
 void task_manager_init(void) {
+    runtime_registry_init();
+
     if (monitoredTasksMux == NULL) {
         monitoredTasksMux = eaPort_Mutex_Create();
-        runtime_registry_init();
-        // Initialize monitored tasks array of size CONFIG_EA_MAX_TASKS
-        // sets all entries to inactive
+    }
+
+    if (monitoredTasksMux != NULL) {
+        eaPort_Mutex_Enter(monitoredTasksMux);
         memset(monitoredTaskHot, 0, sizeof(monitoredTaskHot));
         memset(monitoredTaskCold, 0, sizeof(monitoredTaskCold));
         numMonitoredTasks = 0;
         nextPairId = 1U;
+        eaPort_Mutex_Exit(monitoredTasksMux);
+    }
+
+    if (runtimeRegistryMux != NULL) {
+        eaPort_Mutex_Enter(runtimeRegistryMux);
+        runtime_registry_clear_locked();
+        eaPort_Mutex_Exit(runtimeRegistryMux);
     }
 }
 
