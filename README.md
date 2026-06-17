@@ -52,6 +52,7 @@ That structure makes the repo useful for studying edge-oriented workloads, deadl
 If you want the shortest first run, start here:
 
 - [FreeRTOS First Onboarding Quickstart](docs/getting-started/Quickstart.md)
+- [Contributor Setup](docs/getting-started/Contributor_Setup.md)
 
 ### Build
 
@@ -86,6 +87,13 @@ pair, and prints a compact hello/heartbeat serial trace.
 ```bash
 pio device monitor -p /dev/ttyUSB0 -b 115200
 ```
+
+## Support and contribution
+
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+- Use the GitHub issue tracker for bugs and feature requests.
+- For security-sensitive reports, use the private advisory flow described in [SECURITY.md](SECURITY.md).
+- For release history and versioning expectations, see [CHANGELOG.md](CHANGELOG.md).
 
 ## Documentation
 
