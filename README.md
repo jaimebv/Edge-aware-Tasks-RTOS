@@ -97,7 +97,7 @@ pio device monitor -p /dev/ttyUSB0 -b 115200
 
 ## Documentation
 
-Read the documentation hub in /docs:
+Start with the documentation hub in [docs/index.md](docs/index.md).
 
 ## Example entry points
 
@@ -114,8 +114,6 @@ Read the documentation hub in /docs:
 
 Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
-
-  
 ## License
 
 See `LICENSE` for licensing details.
