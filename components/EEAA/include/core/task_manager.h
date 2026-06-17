@@ -281,7 +281,8 @@ typedef struct {
  * @brief Initialize the task manager.
  *
  * Creates the internal mutexes, clears monitoring state, and resets the
- * runtime registry. Call once before creating any tasks.
+ * runtime registry. Safe to call again between test suites or after a
+ * shutdown path when you need a clean task-manager baseline.
  */
 void task_manager_init(void);
 
