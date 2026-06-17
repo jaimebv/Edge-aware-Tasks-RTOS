@@ -7,6 +7,7 @@ configuration, module responsibilities, test strategy, and the way the pieces fi
 ## Start here
 
 - [Getting Started](getting-started/index.md)
+- [Contributor Setup](getting-started/Contributor_Setup.md)
 - [System docs](system/index.md)
 - [Component docs](components/index.md)
 - [System Architecture](system/System_Architecture.md)
