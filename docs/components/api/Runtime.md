@@ -91,7 +91,8 @@ still forwarding to the same underlying runtime and task-manager code.
 The board application in `src/` now exposes two switchable demos:
 
 - `EA_EXAMPLE_HAPPY_PATH` builds the short convenience-flow sample.
-- `EA_EXAMPLE_ADVANCED_API` builds the full explicit contract sample.
+- `EA_EXAMPLE_ADVANCED_API` builds the full explicit contract sample using the
+  public task-spec helpers and runtime accessors.
 
 The default `nodemcu-32s` build falls back to the advanced demo, while the
 `nodemcu-32s-happy` PlatformIO environment compiles the happy-path demo.

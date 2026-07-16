@@ -60,4 +60,4 @@ powered and reset after flashing.
 
 - Use `nodemcu-32s-hello` for the shortest onboarding path.
 - Use `nodemcu-32s-happy` for the standard friendly demo.
-- Use `nodemcu-32s-advanced` for the explicit low-level runtime path.
+- Use `nodemcu-32s-advanced` for the explicit public-contract runtime path.

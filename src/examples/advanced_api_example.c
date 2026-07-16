@@ -1,8 +1,8 @@
 /*
  * Advanced task creation example.
  *
- * This sample intentionally uses the explicit, low-level configuration path
- * so developers can see the full contract that the convenience helpers wrap.
+ * This sample intentionally uses the public task-spec helpers and accessors
+ * so developers can see the full v1 contract with explicit overrides.
  */
 
 #include <inttypes.h>
@@ -113,24 +113,21 @@ static edge_task_spec_t make_advanced_task_spec(void)
 {
     edge_task_spec_t spec;
 
-    edge_task_spec_init(&spec);
-    spec.task_name = ADV_TASK_NAME;
-    spec.priority = ADV_PRIORITY;
-    spec.client_task_code = advanced_client_task;
-    spec.server_task_code = advanced_server_task;
-    spec.client_stack_depth = ADV_STACK_DEPTH;
-    spec.server_stack_depth = ADV_STACK_DEPTH;
-    spec.core_id = ADV_CORE_ID;
-    spec.app_type = ENRICHED;
-    spec.default_execution_site = LOCAL_EXECUTION;
-    spec.pair_spec = kAdvancedPairSpec;
-    spec.local_host_label = "LOCAL_RUNTIME";
-    spec.period_ms = ADV_PERIOD_MS;
-    spec.deadline_ms = ADV_DEADLINE_MS;
-    spec.delay_weight = ADV_DELAY_WEIGHT;
-    spec.energy_weight = ADV_ENERGY_WEIGHT;
-    spec.client_wcet = ADV_CLIENT_WCET;
-    spec.server_wcet = ADV_SERVER_WCET;
+    edge_task_spec_init_enriched(
+        &spec,
+        ADV_TASK_NAME,
+        advanced_client_task,
+        advanced_server_task,
+        ADV_STACK_DEPTH,
+        ADV_STACK_DEPTH,
+        ADV_PERIOD_MS,
+        &kAdvancedPairSpec);
+    edge_task_spec_set_priority(&spec, ADV_PRIORITY);
+    edge_task_spec_set_core_id(&spec, ADV_CORE_ID);
+    edge_task_spec_set_local_host_label(&spec, "LOCAL_RUNTIME");
+    edge_task_spec_set_deadline_ms(&spec, ADV_DEADLINE_MS);
+    edge_task_spec_set_wcet(&spec, ADV_CLIENT_WCET, ADV_SERVER_WCET);
+    edge_task_spec_set_execution_site_local(&spec);
 
     return spec;
 }
