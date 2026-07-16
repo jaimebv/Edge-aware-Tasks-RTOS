@@ -107,6 +107,23 @@ static void test_null_safe_guards(void)
     pass("port RTOS null-safe guards");
 }
 
+static void test_task_info_null_guards(void)
+{
+    eaPort_task_info_t info;
+    eaPort_task_t task_handle = NULL;
+
+    memset(&info, 0xA5, sizeof(info));
+    expect_true("task info null handle", eaPort_Get_Task_Info(&info, &task_handle) == eaPort_STATUS_ERROR,
+                "task info query should fail when the handle is NULL");
+    expect_true("task info null handle zeroed", info.xTaskHandle == NULL && info.pcTaskName == NULL,
+                "task info should be cleared when the handle is NULL");
+
+    memset(&info, 0xA5, sizeof(info));
+    expect_true("task info null storage", eaPort_Get_Task_Info(NULL, &task_handle) == eaPort_STATUS_ERROR,
+                "task info query should fail when the output storage is NULL");
+    pass("port RTOS task info null guards");
+}
+
 static void test_time_and_memory_helpers(void)
 {
     void *block = eaPort_Malloc(32U);
@@ -285,6 +302,7 @@ void test_port_rtos_run(void)
     test_helpers_reset_counts();
 
     test_null_safe_guards();
+    test_task_info_null_guards();
     test_time_and_memory_helpers();
     test_state_translation_helpers();
     test_queue_mutex_and_task_flow();

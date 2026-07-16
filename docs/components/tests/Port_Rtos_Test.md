@@ -8,6 +8,7 @@ The harness stays abstract to the concrete RTOS backend while validating the
 portable contract:
 
 - null-safe queue and lookup guards
+- null-safe task-info guards
 - memory allocation and tick/delay helpers
 - current-task inspection
 - task creation and handle lookup by name

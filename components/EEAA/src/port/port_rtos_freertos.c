@@ -258,14 +258,20 @@ static eaPort_task_state_t freertos_convert_task_state(eTaskState freertosState)
 
 eaPort_status_t eaPort_Get_Task_Info (eaPort_task_info_t *taskInfo, eaPort_task_t *taskHandle)
 {
-    
-    if (taskInfo == NULL || taskHandle == NULL) {
-        eaPort_task_info_t emptyInfo = {0};
-        *taskInfo = emptyInfo;
+    if (taskInfo == NULL) {
+        return eaPort_STATUS_ERROR;
+    }
+
+    if (taskHandle == NULL) {
+        *taskInfo = (eaPort_task_info_t){0};
         return eaPort_STATUS_ERROR;
     }
 
     TaskHandle_t handle = (TaskHandle_t)(*taskHandle);
+    if (handle == NULL) {
+        *taskInfo = (eaPort_task_info_t){0};
+        return eaPort_STATUS_ERROR;
+    }
     
 
     /* Retrieve FreeRTOS task information */
