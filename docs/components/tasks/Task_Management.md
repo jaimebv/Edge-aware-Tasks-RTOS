@@ -406,19 +406,24 @@ when debugging embedded cleanup behavior.
 
 ## 11. Accessors and compatibility wrappers
 
-The task manager exposes runtime accessors for:
+The task manager exposes accessors for:
 
 - queue handles
 - task handles
 - task names
-- host name
+- host label
 - pair ID
 - task index
 - peer index
 - role
 
-It also still provides some legacy name-based helpers.
-These are compatibility wrappers and should be treated as secondary APIs.
+The runtime pointer returned by `edge_task_pair_runtime_by_task_index()` is a
+borrowed view. It remains valid only while the runtime is active and must not
+be cached after teardown begins.
+
+The task manager also still provides legacy name-based helpers.
+These wrappers are kept for compatibility, but new code should treat them as
+secondary APIs and prefer the newer access patterns below.
 
 The structured creation result is `edge_task_creation_result_t`, which returns
 both a task index and a precise `edge_task_creation_failure_reason_t`.
@@ -427,6 +432,7 @@ New code should prefer:
 
 - runtime accessors when a runtime pointer exists
 - index-based helpers when the task index is known
+- compatibility wrappers only when migrating older call sites
 
 ## 12. Internal registry behavior
 

@@ -463,9 +463,10 @@ const char *edge_task_creation_failure_reason_to_string(edge_task_creation_failu
 /*===========================================================================*/
 /* GET METHODS                                                               */
 /* Legacy name-based wrappers are compatibility-only and should be treated   */
-/* as deprecated in new code. Prefer index-based helpers where possible.     */
-/* Runtime accessors are valid only while the runtime is active.             */
-/* NULL-safe behavior: inactive or NULL inputs return NULL/0/false.          */
+/* as deprecated in new code. Prefer runtime accessors or index-based        */
+/* helpers where possible. Borrowed runtime pointers are valid only while    */
+/* the runtime remains active. NULL-safe behavior: inactive or NULL inputs   */
+/* return NULL/0/false.                                                       */
 /*===========================================================================*/
 
 /**
@@ -564,7 +565,8 @@ int edge_task_pair_peer_index(const edge_task_pair_runtime_t *runtime);
  * @brief Get the borrowed runtime pointer for a monitored task index.
  *
  * Returns NULL when the index is invalid or inactive. The pointer is owned by
- * the task manager and remains valid only while the runtime is active.
+ * the task manager and remains valid only while the runtime is active. Do not
+ * cache it beyond the runtime's lifetime or after teardown begins.
  */
 const edge_task_pair_runtime_t *edge_task_pair_runtime_by_task_index(int taskIndex);
 
@@ -582,6 +584,9 @@ void edge_task_pair_runtime_release(edge_task_pair_runtime_t *runtime);
  * EDGE_TASK_CLEANUP_CLIENT_ONLY removes the client task and its monitor entry.
  * EDGE_TASK_CLEANUP_PAIR removes both tasks, queues, monitor entries, and
  * releases the runtime slot back to the framework.
+ *
+ * The runtime pointer is borrowed; once cleanup completes, accessors for that
+ * runtime must not be used again.
  */
 int edge_task_pair_destroy(edge_task_pair_runtime_t *runtime, edge_task_cleanup_mode_t mode);
 
@@ -599,6 +604,8 @@ int edge_task_pair_destroy_by_name(const char *taskName, edge_task_cleanup_mode_
 
 
 /**
+ * @brief Return the monitored index for a task name.
+ *
  * @deprecated Compatibility wrapper for legacy name-based lookup.
  * Prefer runtime accessors or tracked task indices in new code.
  */
@@ -785,8 +792,7 @@ void update_task_metrics_OE2EL_by_index(int taskIndex, uint32_t newOE2EL);
 /**
  * @deprecated Compatibility wrapper for legacy name-based lookup.
  * Prefer tracked task indices and runtime accessors.
- */
-/**
+ *
  * @brief Find the monitored index for a task name.
  *
  * @param[in] taskName Null-terminated task name.
